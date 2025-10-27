@@ -224,3 +224,105 @@ The NameNode is reactive—it responds to requests but doesn't initiate connecti
 - **Backup**: Regularly snapshot metadata directories; use tools like `hdfs oiv` to inspect FsImages.
 
 This setup makes the NameNode highly reliable for petabyte-scale data, balancing performance and durability. For production, always enable HA to avoid downtime.
+
+# HDFS Snapshots: Detailed Guide
+
+HDFS Snapshots provide a mechanism for creating read-only, point-in-time copies of directories (or the entire filesystem namespace). They are lightweight, space-efficient backups that do not duplicate data blocks but instead reference existing ones via metadata. This makes them ideal for data protection, recovery from errors, and auditing changes without impacting performance.
+
+## Key Benefits
+- **Instantaneous Creation**: O(1) time complexity; no data copying occurs.
+- **Space Efficiency**: Only modified data after snapshot creation incurs additional storage (copy-on-write semantics).
+- **Fault Tolerance**: Helps recover from accidental deletions, overwrites, or corruptions.
+- **No Disruption**: Regular HDFS operations (reads/writes) proceed unaffected.
+
+Snapshots are stored under a reserved `.snapshot` directory and are accessible like any other HDFS path.
+
+## How Snapshots Work
+Snapshots leverage HDFS's metadata structure in the NameNode:
+
+1. **Creation**: The NameNode records the current state of the directory's metadata (file lists, block mappings, sizes) without altering DataNodes.
+2. **Viewing a Snapshot**: When accessing a snapshot path (e.g., `/dir/.snapshot/s1/file`), the NameNode reconstructs the view by applying a "reverse delta" – subtracting post-snapshot modifications from the current state.
+3. **Modifications Post-Snapshot**:
+   - Changes (e.g., edits, deletions) are tracked in a delta log.
+   - New blocks for modified files are created on DataNodes (copy-on-write).
+   - Memory overhead: O(M), where M is the number of modified files/directories since the snapshot.
+4. **Deletion**: Removes the metadata reference; actual data blocks are garbage-collected if unreferenced elsewhere.
+
+This design ensures minimal overhead: No block replication during creation, and deltas are compact.
+
+| Workflow Step | NameNode Action | DataNode Action | Client Impact |
+|---------------|-----------------|-----------------|---------------|
+| **Snapshot Creation** | Record metadata snapshot. | None. | Instantaneous. |
+| **File Read from Snapshot** | Reconstruct via deltas. | Serve existing blocks. | Transparent. |
+| **File Modification** | Update current metadata; log delta. | Allocate new blocks for changes. | Normal write latency. |
+| **Snapshot Deletion** | Discard delta log. | None (blocks GC'd if unused). | O(1) operation. |
+
+## Enabling Snapshots
+Snapshots must be explicitly enabled on directories by an administrator (superuser). Once enabled, directory owners can manage snapshots.
+
+### Admin Commands
+| Command | Description | Example |
+|---------|-------------|---------|
+| `hdfs dfsadmin -allowSnapshot <path>` | Mark a directory as snapshottable. | `hdfs dfsadmin -allowSnapshot /data` |
+| `hdfs dfsadmin -disallowSnapshot <path>` | Disable snapshots (requires deleting all existing ones first). | `hdfs dfsadmin -disallowSnapshot /data` |
+| `hdfs dfsadmin -provisionSnapshotTrash <path> [-all]` | Set up trash for snapshot deletions (prevents immediate permanent loss). | `hdfs dfsadmin -provisionSnapshotTrash /data` |
+
+- **Restrictions**: No nested snapshottable directories (ancestors/descendants cannot both be snapshottable). The directory cannot be deleted/renamed while snapshots exist.
+- **Java API Equivalents**: `HdfsAdmin.allowSnapshot(Path)`, etc.
+
+## Managing Snapshots (User Commands)
+Directory owners can create, delete, and rename snapshots. Maximum per directory: 65,536 (configurable).
+
+| Command | Description | Example | Requirements |
+|---------|-------------|---------|--------------|
+| `hdfs dfs -createSnapshot <path> [<name>]` | Create a snapshot (auto-name if omitted: `sYYYYMMDD-HHMMSS.SSS`). | `hdfs dfs -createSnapshot /data s1` | Directory owner |
+| `hdfs dfs -deleteSnapshot <path> <name>` | Delete a snapshot. | `hdfs dfs -deleteSnapshot /data s1` | Directory owner |
+| `hdfs dfs -renameSnapshot <path> <oldName> <newName>` | Rename a snapshot. | `hdfs dfs -renameSnapshot /data s1 s2` | Directory owner |
+| `hdfs lsSnapshot <path>` | List snapshots in a directory. | `hdfs lsSnapshot /data` | Read access |
+| `hdfs lsSnapshottableDir` | List all snapshottable directories (user-visible ones). | `hdfs lsSnapshottableDir` | None (user's view) |
+
+- **Accessing Snapshots**: Use paths like `/data/.snapshot/s1/file.txt`. Supports standard ops: `ls`, `cat`, `cp` (use `-p` to preserve metadata).
+- **Example Copy from Snapshot**: `hdfs dfs -cp -p /data/.snapshot/s1/file.txt /backup/`
+- **Java API Equivalents**: `FileSystem.createSnapshot(Path, String)`, etc.
+
+## Snapshot Diff Reports
+Compare changes between snapshots or a snapshot vs. current state (use `.` for current).
+
+| Command | Description | Example Output Legend |
+|---------|-------------|-----------------------|
+| `hdfs snapshotDiff <path> <fromSnapshot> [<toSnapshot>]` | Generate diff report. | `+` (created), `-` (deleted), `M` (modified), `R` (renamed) |
+| Example: `hdfs snapshotDiff /data s1 s2` | Shows changes from s1 to s2. | Paths listed with status; renames shown on original path. |
+
+- **Rename Handling**: Intra-directory renames show as `R`; cross-directory as separate create/delete.
+- **Java API**: `DistributedFileSystem.getSnapshotDiffReport(Path, String, String)`
+
+## Configuration Options
+Edit `hdfs-site.xml` on NameNode. Restart required.
+
+| Property | Description | Default |
+|----------|-------------|---------|
+| `dfs.namenode.snapshot.max-num-snapshots` | Hard limit on snapshots per directory. | 65536 |
+| `dfs.namenode.checkpoint.max-snapshot-retain-count` | Snapshots retained during NameNode checkpointing. | 0 (unlimited) |
+| `dfs.namenode.snapshot.enabled` | Globally enable/disable snapshots. | true |
+| `dfs.namenode.name.dir` | NameNode metadata dirs (snapshots add to these). | N/A |
+
+No extra config needed for basic use.
+
+## Limitations and Considerations
+| Limitation | Details |
+|------------|---------|
+| **Nesting Forbidden** | Cannot snapshot a directory if parent/child is snapshottable. |
+| **Reserved Path** | `.snapshot` cannot be a regular directory name; rename existing ones before upgrading Hadoop. |
+| **Diff Accuracy** | Renames outside directory treated as delete/create; order of operations not preserved. |
+| **Deletion Semantics** | Without trash provisioning, deletions are permanent (no HDFS trash for snapshots). |
+| **Upgrade Impact** | Pre-snapshot Hadoop versions may conflict with `.snapshot` paths. |
+| **Scalability** | High snapshot counts increase NameNode memory (deltas); monitor via web UI. |
+
+## Best Practices
+- **Automation**: Script periodic snapshots (e.g., cron jobs) for backups.
+- **Retention**: Use diff reports to identify and prune old snapshots.
+- **Monitoring**: Check NameNode logs for snapshot-related errors; use `hdfs dfsadmin -report` for space usage.
+- **Recovery**: To restore, copy files from snapshot paths to current directory.
+- **Production Tip**: Combine with HDFS Federation/HA for large-scale use.
+
+For full details, consult the official Apache Hadoop documentation.
