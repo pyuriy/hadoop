@@ -1,2 +1,2 @@
 # Hadoop and BigData
-All collected for Hadoop and BigData topics
+All I've collected for Hadoop and BigData topics
