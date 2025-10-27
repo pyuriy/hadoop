@@ -326,3 +326,130 @@ No extra config needed for basic use.
 - **Production Tip**: Combine with HDFS Federation/HA for large-scale use.
 
 For full details, consult the official Apache Hadoop documentation.
+
+# HDFS NameNode High Availability: In-Depth Guide
+
+HDFS NameNode High Availability (HA) addresses the single point of failure in traditional HDFS clusters by deploying multiple NameNodes in an Active/Standby configuration. This ensures seamless failover during hardware failures, software issues, or maintenance, maintaining cluster availability without data loss. HA was introduced in Hadoop 2.0 and is a standard feature in Hadoop 3.x and later. The Active NameNode handles all client operations and metadata updates, while Standby NameNodes remain synchronized and ready to take over.
+
+Key principles:
+- **Shared State**: Edit logs (namespace changes) are shared across NameNodes for synchronization.
+- **Fencing**: Mechanisms prevent "split-brain" scenarios where multiple NameNodes act as Active simultaneously.
+- **No Secondary NameNode**: Standby NameNodes perform checkpointing duties.
+
+HA supports up to five NameNodes (typically two or three) and requires no changes to DataNodes or clients.
+
+## HA Architectures: QJM vs. NFS
+
+Two primary methods for shared edit log storage: Quorum Journal Manager (QJM) and NFS. QJM is recommended for production due to its resilience.
+
+| Aspect | Quorum Journal Manager (QJM) | NFS |
+|--------|------------------------------|-----|
+| **Shared Storage** | Distributed across 3+ JournalNodes (quorum-based consensus). | Single shared NFS directory. |
+| **Fault Tolerance** | High; tolerates failure of minority JournalNodes. | Lower; NFS server is a SPOF. |
+| **Complexity** | Higher (manages JournalNodes and ZooKeeper). | Simpler (leverages existing NFS). |
+| **Scalability** | Excellent for large clusters. | Limited by NFS performance. |
+| **Pros** | Redundant, no single failure point in storage. | Easy setup, low overhead. |
+| **Cons** | More components to manage. | NFS bottlenecks; less resilient. |
+| **Use Case** | Production environments. | Small/dev clusters with NFS infra. |
+
+QJM is the focus below; NFS details are in the comparison.
+
+## QJM-Based HA: Architecture and Components
+
+QJM uses a quorum of JournalNodes (JNs) to store edit logs durably and consistently.
+
+### Components
+- **NameNodes (2–5)**: Active processes operations; Standbys mirror state.
+- **JournalNodes (3+ odd number)**: Lightweight servers storing edit segments; require majority quorum for writes/reads.
+- **ZooKeeper Quorum (3–5 nodes)**: For automatic failover; handles leader election and health monitoring.
+- **ZKFailoverController (ZKFC)**: Daemon per NameNode; pings ZooKeeper and manages transitions.
+- **DataNodes**: Heartbeat to all NameNodes; no special config needed beyond listing all NameNodes.
+
+Data flow: Active NameNode writes edits to a majority of JNs; Standbys tail the logs to sync. Failover involves the new Active applying all pending edits before serving requests.
+
+## Configuration
+
+Configure in `hdfs-site.xml` (NameNodes and JNs) and `core-site.xml` (clients). Distribute configs cluster-wide. Key properties:
+
+| Property | Description | Example Value |
+|----------|-------------|---------------|
+| `dfs.nameservices` | Logical nameservice ID. | `mycluster` |
+| `dfs.ha.namenodes.mycluster` | Comma-separated NameNode IDs. | `nn1,nn2` |
+| `dfs.namenode.rpc-address.mycluster.nn1` | RPC address for nn1. | `nn1.example.com:8020` |
+| `dfs.namenode.http-address.mycluster.nn1` | HTTP address for nn1 (web UI). | `nn1.example.com:9870` |
+| `dfs.namenode.shared.edits.dir` | QJM URI for shared edits. | `qjournal://jn1:8485;jn2:8485;jn3:8485/mycluster` |
+| `dfs.client.failover.proxy.provider.mycluster` | Failover proxy for clients. | `org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider` |
+| `dfs.ha.fencing.methods` | Comma-separated fencing methods (prevents split-brain). | `sshfence` |
+| `dfs.ha.fencing.ssh.private-key-files` | SSH key for fencing (if using sshfence). | `/home/user/.ssh/id_rsa` |
+| `dfs.journalnode.edits.dir` | Local dir for JN edits storage. | `/path/to/jn/edits` |
+| `dfs.ha.automatic-failover.enabled` | Enable auto-failover (requires ZooKeeper). | `true` |
+| `ha.zookeeper.quorum` (core-site.xml) | ZooKeeper hosts. | `zk1:2181,zk2:2181,zk3:2181` |
+| `fs.defaultFS` (core-site.xml) | Default FS URI. | `hdfs://mycluster` |
+
+Additional: Set `dfs.ha.nn.not-become-active-in-safemode` to `true` to block Active transition during safemode.
+
+Prerequisites: Hadoop 2.0+, secure SSH for fencing, equivalent hardware for NameNodes.
+
+## Startup Procedure
+
+1. **Format HDFS** (on first NameNode, if new cluster): `hdfs namenode -format`.
+2. **Start JournalNodes** (on JN hosts): `hdfs --daemon start journalnode`.
+3. **Initialize Shared Edits** (on Active NameNode): `hdfs namenode -initializeSharedEdits`.
+4. **Bootstrap Standby** (on each Standby): `hdfs namenode -bootstrapStandby`.
+5. **Start NameNodes**: `hdfs --daemon start namenode` (on all NN hosts).
+6. **Format ZooKeeper** (once, for auto-failover): `hdfs zkfc -formatZK`.
+7. **Start ZKFC**: `hdfs --daemon start zkfc` (on all NN hosts).
+8. **Start DataNodes**: `hdfs --daemon start datanode`.
+
+Verify: `hdfs haadmin -getServiceState mycluster/nn1` (should show "active" for one, "standby" for others).
+
+## Failover Mechanisms
+
+### Manual Failover
+- Graceful switch for maintenance: Use `hdfs haadmin -failover mycluster/nn1 mycluster/nn2`.
+- Transition specific NN: `hdfs haadmin -transitionToActive mycluster/nn1` or `-transitionToStandby`.
+- Ensures sync before switch; minimal downtime (<1s).
+
+### Automatic Failover
+- ZKFC pings ZooKeeper every second; session expiry (default 5s) triggers detection.
+- Healthy ZKFC claims ZooKeeper lock, fences old Active, applies edits, becomes Active.
+- Config: Enable via `dfs.ha.automatic-failover.enabled=true`; tune `ha.failover-controller.active-standby-elector.zk.op-retry-interval` for retries.
+- Fallback: Manual if ZooKeeper fails.
+
+Fencing ensures old Active aborts (e.g., via SSH kill or script).
+
+## Administration Commands
+
+Use `hdfs haadmin` for management (run as HDFS superuser).
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `hdfs haadmin -getServiceState <nameservice>/<nnid>` | Get state (active/standby). | `hdfs haadmin -getServiceState mycluster/nn1` |
+| `hdfs haadmin -getAllServiceState` | States for all NNs. | `hdfs haadmin -getAllServiceState` |
+| `hdfs haadmin -failover <from> <to>` | Manual failover. | `hdfs haadmin -failover mycluster/nn1 mycluster/nn2` |
+| `hdfs haadmin -transitionToActive <nameservice>/<nnid>` | Force to Active. | `hdfs haadmin -transitionToActive mycluster/nn1` |
+| `hdfs haadmin -transitionToStandby <nameservice>/<nnid>` | Force to Standby. | `hdfs haadmin -transitionToStandby mycluster/nn1` |
+| `hdfs haadmin -checkHealth <nameservice>/<nnid>` | Health check. | `hdfs haadmin -checkHealth mycluster/nn1` |
+| `hdfs haadmin -getFailoverProxyProvider <nameservice>` | Show proxy provider. | `hdfs haadmin -getFailoverProxyProvider mycluster` |
+
+List all: `hdfs haadmin` (no args).
+
+## Troubleshooting and Best Practices
+
+### Common Issues
+- **Sync Failure**: Check JN logs; ensure majority JNs alive. Verify `dfs.namenode.shared.edits.dir` URI.
+- **Failover Stalls**: Inspect ZKFC logs for ZooKeeper connectivity; test fencing manually.
+- **Safemode Loop**: Set `dfs.ha.nn.not-become-active-in-safemode=true`.
+- **Split-Brain**: Always configure fencing; monitor with `hdfs haadmin -checkHealth`.
+
+### Best Practices
+- Use 3 JNs and 3 ZooKeeper nodes for quorum.
+- Monitor via NameNode web UI (ports 9870+); integrate with tools like Ambari/Cloudera Manager.
+- Test failovers regularly in staging.
+- For upgrades: Roll via manual failover; sync FsImages.
+- Security: Enable Kerberos; use ACLs.
+- Limitations: ZooKeeper adds dependency; manual failover needs admin access.
+
+For NFS-specific setup, see the comparison above—it's simpler but less robust.
+
+This guide is based on Hadoop 3.4.2 documentation; consult official sources for version-specific nuances.
