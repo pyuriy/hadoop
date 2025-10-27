@@ -117,3 +117,110 @@ Require superuser privileges.
 - Security: Enable Kerberos for authentication; use ACLs for fine-grained access.
 
 This cheatsheet is compiled from official and community sources for quick reference. For full details, refer to Apache Hadoop documentation.
+
+# HDFS NameNode: Detailed Overview
+
+The NameNode is the cornerstone of the Hadoop Distributed File System (HDFS), acting as the master server in its master/slave architecture. It manages the filesystem namespace, metadata, and access control without handling actual data transfer—user data flows directly between clients and DataNodes. Below is a comprehensive breakdown of its role, components, operations, and interactions.
+
+## Role and Responsibilities
+- **Central Authority**: The NameNode maintains the entire filesystem namespace in memory, including the hierarchical structure of directories and files, file permissions, quotas, and mappings of files to data blocks.
+- **Access Regulation**: It authorizes client operations (e.g., open, close, rename) and directs clients to the appropriate DataNodes for data I/O.
+- **Block Coordination**: Tracks block locations across DataNodes, enforces replication factors (default: 3), and ensures fault tolerance through re-replication.
+- **No Data Storage**: It stores only metadata (typically a few GB for large clusters), not the actual data blocks.
+
+Key design principle: User data never passes through the NameNode, enabling high-throughput streaming access.
+
+## Filesystem Namespace
+HDFS supports a Unix-like hierarchical namespace:
+- Operations: Create/delete/rename files and directories, set permissions/quotas.
+- Limitations: No hard/soft links or random writes (append-only for files).
+- Reserved Paths: System paths like `/.reserved` (for internal use) and `.snapshot` (for backups).
+
+The namespace is kept fully in memory for fast access, with persistence handled separately (see below).
+
+## Metadata Management
+The NameNode stores two main types of metadata:
+- **Namespace Metadata**: Directory/file hierarchy, permissions, modification times.
+- **Block Metadata**: File-to-block mappings, block locations (DataNode IDs), replication factors.
+
+This metadata is loaded into memory on startup and updated in real-time for all operations.
+
+## Persistence Mechanisms: FsImage and EditLog
+To ensure durability and recoverability, the NameNode uses a dual-file persistence model:
+
+| Component | Description | Storage | Role in Operations |
+|-----------|-------------|---------|--------------------|
+| **FsImage** | Persistent snapshot of the filesystem namespace and block mappings at a point in time. | Local disk (e.g., `dfs.namenode.name.dir`). | Loaded on startup; serves as the base for recovery. |
+| **EditLog** | Sequential, append-only transaction log recording every metadata change (e.g., file creation, replication updates). | Local disk (same directory as FsImage). | Appended synchronously for each operation; ensures atomicity. |
+
+### How Persistence Works
+1. **On Startup**: NameNode loads the latest FsImage into memory, then replays the EditLog to apply recent changes.
+2. **During Runtime**: All mutations (e.g., writes) are appended to the EditLog and reflected in memory immediately.
+3. **Checkpointing**: Periodically (configurable via `dfs.namenode.checkpoint.period` or after `dfs.namenode.checkpoint.txns` transactions):
+   - Merge EditLog into FsImage to create an updated snapshot.
+   - Truncate the EditLog (old entries are now in FsImage).
+   - This reduces recovery time on restart by minimizing EditLog replay.
+
+Without checkpointing, EditLogs can grow large, slowing startups. Multiple copies of these files can be configured for redundancy.
+
+## Secondary NameNode
+The Secondary NameNode is a helper daemon (not a hot standby):
+- **Functions**:
+  - Downloads FsImage and EditLog from the active NameNode periodically.
+  - Merges them into a new FsImage (offloads checkpointing from the primary).
+  - Uploads the updated FsImage back.
+- **Configuration**: Runs on a separate machine; sync interval via `dfs.namenode.checkpoint.dir`.
+- **Limitations**: It cannot take over if the primary fails—it's for maintenance, not HA. For failover, use HDFS High Availability (HA) with active/standby NameNodes and shared storage (e.g., Quorum Journal Manager).
+
+In production, Secondary NameNode is often combined with HA setups.
+
+## Block Management
+Blocks (default 128 MB) are the unit of storage and parallelism:
+- **Mapping**: NameNode maintains an in-memory map of file blocks to DataNode locations.
+- **Replication**:
+  - Ensures the specified number of replicas per block.
+  - Placement policy (rack-aware): For factor=3, prefers 2 replicas on the same rack, 1 on another for fault tolerance.
+- **Under-Replicated/Over-Replicated Handling**: Automatically triggers re-replication or deletion as needed.
+
+| Replication Scenario | Placement Strategy |
+|----------------------|--------------------|
+| Factor = 3 | 1 local rack (writer's node), 1 same rack, 1 remote rack. |
+| Factor > 3 | Additional replicas distributed to avoid rack overload. |
+| Hot/Cold Data | Uses storage policies (HOT: SSD; COLD: archival) for placement. |
+
+## Interactions with DataNodes and Clients
+Communication uses TCP/IP and RPC protocols:
+- **With Clients**:
+  - Client requests metadata (e.g., block locations) via the Client Protocol.
+  - NameNode responds with DataNode addresses; client then reads/writes directly to DataNodes.
+- **With DataNodes** (DataNode Protocol):
+  - **Heartbeats**: DataNodes send every few seconds to report liveness. Missing heartbeats mark a node as dead.
+  - **Block Reports**: Sent periodically (or on startup) listing all stored blocks. NameNode uses this to update its block map.
+  - **Commands**: NameNode issues instructions like "replicate block X to node Y" via RPC responses.
+
+The NameNode is reactive—it responds to requests but doesn't initiate connections.
+
+## Safemode and Startup
+- **Safemode**: Entered on startup or after failover. No mutations (e.g., replication) occur until:
+  - A configurable percentage of blocks are reported (via Block Reports).
+  - A 30-second grace period passes.
+- **Exit Command**: `hdfs dfsadmin -safemode leave` (admin only).
+- Purpose: Ensures metadata consistency before allowing writes.
+
+## High Availability (HA) and Robustness
+- **Single Point of Failure Mitigation**: Use HA with:
+  - **Active/Standby NameNodes**: Shared EditLog via JournalNodes (QJM) or NFS.
+  - **Failover**: Automatic (ZKFailoverController) or manual (`hdfs haadmin -failover`).
+- **Failure Handling**:
+  - NameNode Crash: Standby takes over using shared logs.
+  - DataNode Failure: Detect via heartbeats; re-replicate affected blocks.
+- **Integrity**: Clients verify data with checksums; metadata uses CRC for corruption detection.
+- **Scalability**: Federation allows multiple independent NameNodes for namespace partitioning.
+
+## Monitoring and Best Practices
+- **Web UI**: Access at `http://namenode:9870` for namespace browser, reports, and logs.
+- **Logs**: Check `hadoop-hdfs-namenode*.log` for EditLog/FsImage issues.
+- **Tuning**: Increase `dfs.namenode.edits.journaltail` for faster tailing in HA.
+- **Backup**: Regularly snapshot metadata directories; use tools like `hdfs oiv` to inspect FsImages.
+
+This setup makes the NameNode highly reliable for petabyte-scale data, balancing performance and durability. For production, always enable HA to avoid downtime.
