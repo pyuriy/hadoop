@@ -453,3 +453,160 @@ List all: `hdfs haadmin` (no args).
 For NFS-specific setup, see the comparison above—it's simpler but less robust.
 
 This guide is based on Hadoop 3.4.2 documentation; consult official sources for version-specific nuances.
+
+# Detailed Steps to Edit HDFS FSImage to Remove Broken Snapshot Records
+
+**Warning**: Editing the FSImage file is an advanced, high-risk operation that can render your HDFS cluster unusable if done incorrectly. It should only be performed in a non-production environment or after exhaustive backups and testing. Always consult Hadoop documentation and consider professional support. This process uses the Offline Image Viewer (OIV) tool, which is designed for offline analysis but supports experimental reconstruction. Broken snapshot records typically appear as corrupted inodes in snapshot metadata, identifiable via corruption detection.
+
+## Prerequisites
+- Access to the NameNode host with HDFS superuser privileges.
+- Hadoop 2.4+ (for modern OIV; use `oiv_legacy` for older versions).
+- Sufficient disk space (XML dumps can be multi-GB for large namespaces).
+- Backup of the entire NameNode metadata directory (`dfs.namenode.name.dir`).
+- Cluster in a safe state: Stop all HDFS services if possible, especially in non-HA setups.
+- For HA clusters: Use the shared edits directory; coordinate with all NameNodes.
+
+## High-Level Overview
+1. Stop the NameNode.
+2. Detect corruption to identify broken snapshot records.
+3. Dump FSImage to editable XML.
+4. Manually edit the XML to remove broken records.
+5. Reconstruct a new binary FSImage from the edited XML.
+6. Validate the new FSImage.
+7. Replace the old FSImage and restart the NameNode.
+8. Verify the cluster.
+
+## Step-by-Step Instructions
+
+### Step 1: Stop the NameNode and Prepare Backups
+- Ensure no active operations are running.
+- Stop the NameNode daemon:
+  ```
+  hdfs --daemon stop namenode
+  ```
+- In HA setups, transition to another Active NameNode first using `hdfs haadmin -failover` and stop the target one.
+- Backup the metadata directory (e.g., `/dfs/name/current/`):
+  ```
+  cp -r /path/to/dfs.namenode.name.dir /backup/fsimage_backup_$(date +%Y%m%d)
+  ```
+- Identify the latest FSImage file (e.g., `fsimage_000000000000000XXXXX`):
+  ```
+  ls -la /path/to/dfs.namenode.name.dir/current/ | grep fsimage
+  ```
+- Copy the target FSImage to a working directory:
+  ```
+  cp /path/to/current/fsimage_XXXXX /tmp/working_fsimage
+  ```
+
+### Step 2: Detect Corruption to Identify Broken Snapshot Records
+Use OIV's `DetectCorruption` processor to scan for issues, focusing on snapshot-related inodes.
+- Command:
+  ```
+  hdfs oiv -p DetectCorruption -i /tmp/working_fsimage -o /tmp/corruption_report.txt
+  ```
+- Output: A tab-delimited report listing corruptions, including:
+  | CorruptionType | Id | IsSnapshot | ParentPath | ParentId | Name | NodeType | CorruptChildren |
+  |----------------|----|------------|------------|----------|------|----------|-----------------|
+  | CorruptNode | 16388 | true | /data/.snapshot | 16386 | broken_snap | Unknown | 0 |
+  
+  - Look for rows where `IsSnapshot=true` and `CorruptionType` indicates issues (e.g., `CorruptNode`, `CorruptNodeWithMissingChild`).
+  - Note the `Id` values—these are inode IDs to remove during editing.
+- If no snapshots are listed, the issue may be elsewhere; re-run with `-debug` for more details (if supported in your version).
+
+### Step 3: Dump FSImage to XML Format
+Convert the binary FSImage to editable XML.
+- Command:
+  ```
+  hdfs oiv -p XML -i /tmp/working_fsimage -o /tmp/fsimage.xml
+  ```
+- This creates a verbose XML file with sections like `<INodeSection>` containing all inodes.
+- Tip: For large files, monitor disk usage; compress if needed (`gzip /tmp/fsimage.xml`).
+
+### Step 4: Manually Edit the XML to Remove Broken Records
+- Open the XML in a text editor or XML-aware tool (e.g., `vim`, VS Code, or `xmlstarlet` for automation).
+- Locate the `<INodeSection>`:
+  ```xml
+  <INodeSection>
+    <lastInodeId>XXXXX</lastInodeId>
+    <inode>
+      <id>16388</id>  <!-- Target this ID from corruption report -->
+      <type>DIRECTORY</type>
+      <name>broken_snap</name>
+      <symlink>  <!-- Or other attributes -->
+      ...
+    </inode>
+    <!-- Other inodes -->
+  </INodeSection>
+  ```
+- **Remove Broken Snapshot Entries**:
+  - Delete entire `<inode>` blocks for corrupt IDs (e.g., inode ID 16388).
+  - For snapshots, also check and remove references in parent directories (e.g., under `/data/.snapshot/` inodes).
+  - If the snapshot is nested, trace `ParentId` from the report and remove child inodes recursively.
+  - Update `<lastInodeId>` if you removed the highest ID (set to the max remaining ID).
+- Preserve structure: Ensure XML remains well-formed (balanced tags, no syntax errors).
+- Save as `/tmp/fsimage_edited.xml`.
+- **Automation Tip**: Use `xmlstarlet` or `sed` for bulk removal:
+  ```
+  xmlstarlet ed -d "//inode[id='16388']" /tmp/fsimage.xml > /tmp/fsimage_edited.xml
+  ```
+
+### Step 5: Reconstruct Binary FSImage from Edited XML
+Use the experimental `ReverseXML` processor to convert back.
+- Command:
+  ```
+  hdfs oiv -p ReverseXML -i /tmp/fsimage_edited.xml -o /tmp/fsimage_cleaned
+  ```
+- This generates `/tmp/fsimage_cleaned` (binary) and `/tmp/fsimage_cleaned.md5` for verification.
+- Verify MD5:
+  ```
+  md5sum /tmp/fsimage_cleaned /tmp/fsimage_cleaned.md5
+  ```
+
+### Step 6: Validate the New FSImage
+- Re-run corruption detection:
+  ```
+  hdfs oiv -p DetectCorruption -i /tmp/fsimage_cleaned -o /tmp/new_corruption_report.txt
+  ```
+- Check for zero corruptions. If issues persist, revert to backup and iterate on edits.
+- Optionally, dump a sample to delimited text for spot-check:
+  ```
+  hdfs oiv -p Delimited -i /tmp/fsimage_cleaned -o /tmp/sample.txt | head -20
+  ```
+- Test startup in a dry-run (if supported) or on a test cluster.
+
+### Step 7: Replace the FSImage and Handle Edits
+- **For Non-HA (Single NameNode)**:
+  - Copy the new FSImage to the current directory, renaming to match the latest (e.g., `fsimage_000000000000000XXXXX`).
+  - Truncate or remove old EditLog if needed (but prefer replaying):
+    ```
+    mv /tmp/fsimage_cleaned /path/to/current/fsimage_XXXXX
+    ```
+  - Update `seen_txid` in `VERSION` file to match the FSImage's transaction ID (view with `hdfs oiv -p XML ... | grep txid`).
+- **For HA (QJM or NFS)**:
+  - Upload the new FSImage to shared storage.
+  - Initialize shared edits if needed: `hdfs namenode -initializeSharedEdits`.
+  - Bootstrap standbys: `hdfs namenode -bootstrapStandby`.
+- Clear any in-progress checkpoints.
+
+### Step 8: Restart the NameNode and Verify
+- Start the NameNode:
+  ```
+  hdfs --daemon start namenode
+  ```
+- Monitor logs (`hadoop-hdfs-namenode*.log`) for errors during FsImage load and EditLog replay.
+- In HA, promote if necessary: `hdfs haadmin -transitionToActive <nameservice>/<nnid>`.
+- Verify:
+  - Run `hdfs fsck /` to check filesystem health.
+  - List snapshots: `hdfs lsSnapshot <path>`—broken ones should be gone.
+  - Check NameNode web UI (`http://namenode:9870`) for namespace integrity.
+- If issues arise, revert: Stop NameNode, restore backup, and restart.
+
+## Potential Pitfalls and Best Practices
+- **Inode ID Gaps**: Removing inodes may leave gaps; Hadoop tolerates this, but avoid renumbering.
+- **Transaction Consistency**: Ensure the new FSImage's txid matches or precedes the EditLog start; otherwise, replay may fail.
+- **Snapshots Specifics**: Broken records often stem from interrupted deletions (e.g., HDFS-9406 bug); after editing, disallow/re-allow snapshots on the directory.
+- **Testing**: Always test on a cloned FSImage first.
+- **Alternatives**: If possible, use `hdfs dfs -deleteSnapshot` after fixing underlying issues, or roll back via Secondary NameNode checkpoints.
+- **Version Note**: As of Hadoop 3.4.2 (stable in 2025), ReverseXML is experimental—check your version's docs for updates.
+
+For more, refer to the [Apache Hadoop Offline Image Viewer Guide](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsImageViewer.html).
