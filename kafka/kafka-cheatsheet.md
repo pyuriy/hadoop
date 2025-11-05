@@ -59,6 +59,9 @@ docker-compose up -d
 | **Consumer** | Subscribes to topics/partitions. | Group ID (for load balancing), Offset (position in log). |
 | **Broker** | Kafka server handling storage/traffic. | Cluster-wide coordination via Zookeeper/KRaft (Kafka 3.3+). |
 
+KRAFT - Kafka RAFT
+RAFT stands for Replicated Agreement for Fault Tolerance.
+
 ### Creating/Deleting Topics
 ```bash
 # Create topic
