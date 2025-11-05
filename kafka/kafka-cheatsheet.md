@@ -287,7 +287,7 @@ ssl.truststore.password=secret
 
 For advanced topics (e.g., Flink integration, Cloud configs), refer to Confluent docs. Update versions for your env!
 
-### Kafka Deep Dive: Answering Key Questions
+# Kafka Deep Dive: Answering Key Questions
 
 Below, I'll address each question with clear explanations, drawing from Apache Kafka's core mechanics (up to Kafka 3.8+ as of late 2025). These build on standard configurations; always test in your environment. References to Confluent features (e.g., Control Center) are included where relevant for monitoring.
 
