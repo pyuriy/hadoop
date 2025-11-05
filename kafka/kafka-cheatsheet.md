@@ -291,7 +291,7 @@ For advanced topics (e.g., Flink integration, Cloud configs), refer to Confluent
 
 Below, I'll address each question with clear explanations, drawing from Apache Kafka's core mechanics (up to Kafka 3.8+ as of late 2025). These build on standard configurations; always test in your environment. References to Confluent features (e.g., Control Center) are included where relevant for monitoring.
 
-#### 1. Role of Active Controller in Kafka
+## 1. Role of Active Controller in Kafka
 The **active controller** is a single elected broker in a Kafka cluster responsible for cluster-wide administrative tasks and metadata management. It ensures consistency across the cluster without every broker handling these operations independently.
 
 - **Key Responsibilities**:
@@ -308,7 +308,7 @@ The **active controller** is a single elected broker in a Kafka cluster responsi
 
 - **Why It Matters**: Centralizes coordination for efficiency, but in KRaft mode (recommended for new clusters), it's more distributed and Zookeeper-free for better scalability.
 
-#### 2. How Does Kafka Handle Log Compaction?
+## 2. How Does Kafka Handle Log Compaction?
 Kafka's **log compaction** is a retention and cleanup policy that enables "key-based" message retention, ideal for stateful topics (e.g., storing the latest user profile by user ID). It treats the log as a compacted key-value store rather than a pure append log.
 
 - **Mechanism**:
@@ -330,7 +330,7 @@ Kafka's **log compaction** is a retention and cleanup policy that enables "key-b
 
 - **Example Use**: In ksqlDB, compact topics back materialized views: `CREATE TABLE AS SELECT ... WITH (kafka_topic='changelog', cleanup.policy='compact');`.
 
-#### 3. Which Partitioner/Assignor Strategy Would You Use for Better Performance & Durability in Kafka?
+## 3. Which Partitioner/Assignor Strategy Would You Use for Better Performance & Durability in Kafka?
 For **performance** (throughput, low latency) and **durability** (fault tolerance, even load), choose strategies that minimize shuffling, enable batching, and distribute load evenly. Defaults have improved in recent versions.
 
 - **Producer Partitioner** (How messages are assigned to partitions):
@@ -351,7 +351,7 @@ For **performance** (throughput, low latency) and **durability** (fault toleranc
 
 - **Overall Tips**: Set `max.in.flight.requests.per.connection=5` (or 1 for strict ordering). Monitor partition balance in Control Center. For durability, always use replication factor ≥3.
 
-#### 4. What Happens When min.insync.replicas Are Not Met? What’s the Ideal Number Would You Use? Why?
+## 4. What Happens When min.insync.replicas Are Not Met? What’s the Ideal Number Would You Use? Why?
 `min.insync.replicas` (default: 1) defines the minimum number of in-sync replicas (ISRs) required for a partition's leader to accept writes when `acks=all` (durability mode).
 
 - **What Happens If Not Met**:
@@ -368,7 +368,7 @@ For **performance** (throughput, low latency) and **durability** (fault toleranc
   - **Contextual Tweaks**: Use 1 for low-durability dev topics; 3 for ultra-critical (e.g., finance). Set via topic config: `--config min.insync.replicas=2`.
   - **Monitoring**: Watch `kafka.server:type=ReplicaManager,name=UnderReplicatedPartitions` JMX metric or Control Center alerts.
 
-#### 5. Slow Consumer/Consumer Lag on Kafka Topic, How Do You Handle It?
+## 5. Slow Consumer/Consumer Lag on Kafka Topic, How Do You Handle It?
 Consumer lag (offset delta between produced and consumed messages) indicates bottlenecks. Triage systematically: monitor via `kafka-consumer-groups --describe` or Control Center lag charts.
 
 - **Step-by-Step Handling**:
@@ -394,7 +394,7 @@ Consumer lag (offset delta between produced and consumed messages) indicates bot
 
 - **When Severe**: Pause/resume consumers (`consumer.pause()`) or use a dead-letter queue for failed records.
 
-#### 6. How Do You Triage Frequent Consumer Group Rebalancing?
+## 6. How Do You Triage Frequent Consumer Group Rebalancing?
 Frequent rebalances (e.g., every few minutes) disrupt processing, causing lag spikes. Triggered by heartbeats failing or group changes. Use `kafka-consumer-groups --describe` to spot patterns.
 
 - **Triage Steps**:
