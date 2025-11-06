@@ -285,7 +285,7 @@ ssl.truststore.password=secret
 - **Bootstrap Servers**: `localhost:9092` (default).
 - **Ports**: Kafka 9092, Schema Reg 8081, Connect 8083, ksqlDB 8088, Control Center 9021.
 - **Exactly-Once**: Enable `enable.idempotence=true` + transactions.
-- **KRaft Mode** (Zookeeper-free): Set `process.roles=broker,controller` in 3.3+.
+- **KRAFT Mode** (Zookeeper-free): Set `process.roles=broker,controller` in 3.3+.
 
 For advanced topics (e.g., Flink integration, Cloud configs), refer to Confluent docs. Update versions for your env!
 
@@ -297,18 +297,18 @@ Below, I'll address each question with clear explanations, drawing from Apache K
 The **active controller** is a single elected broker in a Kafka cluster responsible for cluster-wide administrative tasks and metadata management. It ensures consistency across the cluster without every broker handling these operations independently.
 
 - **Key Responsibilities**:
-  - **Leader Election**: Detects broker failures via Zookeeper (pre-Kafka 3.3) or KRaft (quorum-based controllers in 3.3+), elects new partition leaders, and assigns replicas.
-  - **Partition Reassignment**: Handles manual or automatic rebalancing of partitions (e.g., during scaling or failures) by updating metadata in Zookeeper/KRaft.
+  - **Leader Election**: Detects broker failures via Zookeeper (pre-Kafka 3.3) or KRAFT (quorum-based controllers in 3.3+), elects new partition leaders, and assigns replicas.
+  - **Partition Reassignment**: Handles manual or automatic rebalancing of partitions (e.g., during scaling or failures) by updating metadata in Zookeeper/KRAFT.
   - **Topic Management**: Processes create/delete/list topic requests, assigns partitions, and configures replication.
   - **Preferred Replica Election**: Ensures even distribution of leaders across brokers to avoid hotspots.
   - **Cluster Metadata Sync**: Broadcasts changes (e.g., via ControllerChange events) to all brokers.
 
 - **How It Works**:
-  - Election: Brokers register as potential controllers; the first to acquire a Zookeeper lock (or KRaft epoch) becomes active. Only one is active at a time—failover is fast (sub-second in KRaft).
+  - Election: Brokers register as potential controllers; the first to acquire a Zookeeper lock (or KRaft epoch) becomes active. Only one is active at a time—failover is fast (sub-second in KRAFT).
   - Failover: If the active controller dies, another is elected automatically.
   - Monitoring: Use `kafka-broker-api-versions` or Confluent Control Center to check controller status.
 
-- **Why It Matters**: Centralizes coordination for efficiency, but in KRaft mode (recommended for new clusters), it's more distributed and Zookeeper-free for better scalability.
+- **Why It Matters**: Centralizes coordination for efficiency, but in KRAFT mode (recommended for new clusters), it's more distributed and Zookeeper-free for better scalability.
 
 ## 2. How Does Kafka Handle Log Compaction?
 Kafka's **log compaction** is a retention and cleanup policy that enables "key-based" message retention, ideal for stateful topics (e.g., storing the latest user profile by user ID). It treats the log as a compacted key-value store rather than a pure append log.
@@ -418,7 +418,7 @@ Frequent rebalances (e.g., every few minutes) disrupt processing, causing lag sp
   5. **Advanced**:
      - Enable consumer metrics reporting.
      - Test with chaos tools (e.g., Confluent's Chaos Toolkit) to simulate failures.
-     - If persistent, migrate to KRaft for faster metadata ops.
+     - If persistent, migrate to KRAFT for faster metadata ops.
 
 - **Goal**: Aim for rebalances <1/hour. Static IDs can eliminate them for stable groups.
 
