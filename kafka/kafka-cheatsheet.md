@@ -304,7 +304,7 @@ The **active controller** is a single elected broker in a Kafka cluster responsi
   - **Cluster Metadata Sync**: Broadcasts changes (e.g., via ControllerChange events) to all brokers.
 
 - **How It Works**:
-  - Election: Brokers register as potential controllers; the first to acquire a Zookeeper lock (or KRaft epoch) becomes active. Only one is active at a time—failover is fast (sub-second in KRAFT).
+  - Election: Brokers register as potential controllers; the first to acquire a Zookeeper lock (or KRAFT epoch) becomes active. Only one is active at a time—failover is fast (sub-second in KRAFT).
   - Failover: If the active controller dies, another is elected automatically.
   - Monitoring: Use `kafka-broker-api-versions` or Confluent Control Center to check controller status.
 
