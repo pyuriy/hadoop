@@ -57,7 +57,7 @@ docker-compose up -d
 | **Partition** | Ordered, immutable log of messages. | Leader (handles reads/writes), Followers (replicas). |
 | **Producer** | Publishes messages to topics. | Key (for partitioning), Value, Headers. |
 | **Consumer** | Subscribes to topics/partitions. | Group ID (for load balancing), Offset (position in log). |
-| **Broker** | Kafka server handling storage/traffic. | Cluster-wide coordination via Zookeeper/KRaft (Kafka 3.3+). |
+| **Broker** | Kafka server handling storage/traffic. | Cluster-wide coordination via Zookeeper/KRAFT (Kafka 3.3+). |
 
 - **KRAFT** - Kafka RAFT (Replicated Agreement for Fault Tolerance)
 
