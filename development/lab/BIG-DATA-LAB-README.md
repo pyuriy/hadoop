@@ -223,8 +223,13 @@ References & resources
 - MinIO docs: https://docs.min.io/
 
 What's next
-- I can generate:
+- we can do the follwoing:
   - The docker-compose.yml to run the local lab environment,
   - A starter Jupyter notebook (PySpark) for Modules 1–3 with runnable cells,
   - A sample PySpark Structured Streaming app (file) ready to submit with spark-submit.
-Which files would you like me to produce now?
+
+It's ready-to-run Jupyter notebook that implements the starter lab for Modules 1–3 (Kafka basics, schema/serialization notes, and a Spark Structured Streaming example). The notebook includes cells to install needed packages, create a Kafka topic, produce/consume JSON test messages, and run a PySpark Structured Streaming job that reads from Kafka, aggregates with event-time windows + watermark, and writes Parquet output locally (with checkpoints). It also contains notes and optional snippets for Schema Registry/Avro and MinIO configuration.
+
+You can run this notebook inside the jupyter/pyspark-notebook container from the lab docker-compose (open at http://localhost:8888). Run cells top-to-bottom. If you want Avro + Schema Registry or direct S3A/MinIO Parquet writes enabled in the notebook, I can add those cells and dependency instructions next.
+
+
