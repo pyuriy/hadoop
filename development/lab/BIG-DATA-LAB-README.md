@@ -223,13 +223,13 @@ References & resources
 - MinIO docs: https://docs.min.io/
 
 What's next
-- we can do the follwoing:
-  - The docker-compose.yml to run the local lab environment,
-  - A starter Jupyter notebook (PySpark) for Modules 1–3 with runnable cells,
+- We can do the follwoing:
+  - The [docker-compose.yml](./docker-compose.yml) to run the local lab environment,
+  - A starter Jupyter [notebook](./starter_lab_modules_1-3_notebook.ipynb) (PySpark) for Modules 1–3 with runnable cells,
   - A sample PySpark Structured Streaming app (file) ready to submit with spark-submit.
 
 It's ready-to-run Jupyter [notebook](./starter_lab_modules_1-3_notebook.ipynb) that implements the starter lab for Modules 1–3 (Kafka basics, schema/serialization notes, and a Spark Structured Streaming example). The notebook includes cells to install needed packages, create a Kafka topic, produce/consume JSON test messages, and run a PySpark Structured Streaming job that reads from Kafka, aggregates with event-time windows + watermark, and writes Parquet output locally (with checkpoints). It also contains notes and optional snippets for Schema Registry/Avro and MinIO configuration.
 
 You can run this notebook inside the jupyter/pyspark-notebook container from the lab docker-compose (open at http://localhost:8888). Run cells top-to-bottom. If you want Avro + Schema Registry or direct S3A/MinIO Parquet writes enabled in the notebook, I can add those cells and dependency instructions next.
 
-
+A production-minded PySpark [streaming app](./streaming_app.py) that you can run with spark-submit. It reads JSON events from Kafka, performs event-time windowed aggregation with watermarking, and writes Parquet output with checkpointing; it also has optional S3A/MinIO configuration injectable via CLI flags or environment variables. Next, you can run this with spark-submit (I included a sample command in the file header), and if you'd like I can: provide a ready-made spark-submit invocation tailored for the Docker Compose lab (including --packages for hadoop-aws and aws SDK jars), add Avro + Schema Registry decoding support, or produce a companion Docker/Spark config with the jars preloaded. Which of those should I produce next?
