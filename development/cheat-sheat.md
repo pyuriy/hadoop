@@ -1,3 +1,5 @@
+# Big Data developer cheat sheet
+
 Below is a compact but comprehensive cheat sheet for a Big Data developer — covering core concepts, tools, commands, code snippets, architecture patterns, tuning tips, debugging steps, and useful references. Use it as a quick reference while designing, implementing, operating, and troubleshooting big data systems.
 
 OVERVIEW — quick mental model
