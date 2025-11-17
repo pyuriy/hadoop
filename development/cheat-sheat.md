@@ -291,5 +291,3 @@ If you want, I can:
 - Produce a printable 1–2 page PDF cheat-sheet for your team.
 - Generate language-specific code snippets (Scala/Java/Python) for Spark and Flink.
 - Create a starter repo with CI, sample Spark app, Dockerized Kafka + Schema Registry + example producer/consumer.
-
-Which one would you like next?
