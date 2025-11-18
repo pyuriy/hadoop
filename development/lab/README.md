@@ -4,11 +4,13 @@ Overview
 This lab is a hands-on, modular course that teaches core big-data development skills: ingestion, serialization, batch and stream processing, storage formats, query, orchestration, and monitoring. It uses a local Docker-based environment so you can run everything on a single workstation or VM.
 
 Intended audience
+
 - Software/data engineers who want practical, end-to-end experience building big-data pipelines.
 - Prerequisites: basic Linux command-line, Python, Docker & Docker Compose, Java (for Spark if running locally), familiarity with SQL and programming.
 
 Learning objectives
 By the end of the lab you will be able to:
+
 - Stand up a local reproducible big-data stack (Kafka, Schema Registry, MinIO, Postgres, Jupyter/PySpark).
 - Produce/consume messages with Kafka and manage schema using Avro + Schema Registry.
 - Implement Spark Structured Streaming jobs with exactly-once semantics.
@@ -18,6 +20,7 @@ By the end of the lab you will be able to:
 - Apply performance and operational best practices (partitioning, compaction, monitoring basics).
 
 Contents
+
 - Quick start (10–20 minutes)
 - Lab modules (8 modules, ~1–4 hours each)
 - Datasets (download links and pre-canned samples)
@@ -28,16 +31,20 @@ Contents
 - References
 
 Quick start (local)
+
 1. Install Docker and Docker Compose.
 2. Clone the lab repo or copy the docker-compose file (provided in this lab).
 3. Run: docker compose up -d
 4. Open Jupyter: http://localhost:8888 (token printed by container logs)
+
 ```bash
 $docker logs lab-jupyter-1 |grep token
 ```
-6. Start following Module 1 in the notebook or terminal.
+
+5. Start following Module 1 in the notebook or terminal.
 
 Provided components
+
 - Zookeeper + Kafka (broker)
 - Confluent Schema Registry (Avro schemas)
 - MinIO (S3-compatible object store)
