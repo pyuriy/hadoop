@@ -70,34 +70,51 @@ $docker logs lab-jupyter-1 |grep token
 
 ### Module 1 — Ingestion: Kafka fundamentals (1–2 hrs)
 
-Goals:
+#### Goals:
 
 - Create topics, produce messages, consume messages
 - Observe partitions, replication, consumer groups
 
-Tasks
+#### Tasks
+
 - Create topic "events" with 6 partitions, RF=1 (dev)
 - Start a console producer and send JSON messages
 - Start a console consumer (from beginning)
 - Observe partition assignment and offsets
 
-Commands (examples)
-- Create topic:
-  kafka-topics --bootstrap-server localhost:9092 --create --topic events --partitions 6 --replication-factor 1
-- Console producer:
-  kafka-console-producer --broker-list localhost:9092 --topic events
-- Console consumer:
-  kafka-console-consumer --bootstrap-server localhost:9092 --topic events --from-beginning
+#### Commands (examples)
 
-Verification
+- Create topic:
+
+```bash
+  kafka-topics --bootstrap-server localhost:9092 --create --topic events --partitions 6 --replication-factor 1
+```
+
+- Console producer:
+  
+```bash
+  kafka-console-producer --broker-list localhost:9092 --topic events
+```
+
+- Console consumer:
+
+```bash
+  kafka-console-consumer --bootstrap-server localhost:9092 --topic events --from-beginning
+```
+
+#### Verification
+
 - Produce 10 messages, consume 10 messages, confirm offsets increment.
 
-Module 2 — Schemas & Serialization: Avro + Schema Registry (1–2 hrs)
-Goals
+### Module 2 — Schemas & Serialization: Avro + Schema Registry (1–2 hrs)
+
+#### Goals
+
 - Register an Avro schema in Schema Registry and produce Avro-encoded messages
 - Understand schema compatibility settings
 
-Tasks
+*Tasks*
+
 - Register "user_event" Avro schema
 - Produce Avro messages via a small Python script using confluent-kafka
 - Change schema (add optional field) and test compatibility (BACKWARD, FORWARD, FULL)
