@@ -1,14 +1,16 @@
 # Comprehensive Big Data Development Lab
 
-Overview
+## Overview
+
 This lab is a hands-on, modular course that teaches core big-data development skills: ingestion, serialization, batch and stream processing, storage formats, query, orchestration, and monitoring. It uses a local Docker-based environment so you can run everything on a single workstation or VM.
 
-Intended audience
+## Intended audience
 
 - Software/data engineers who want practical, end-to-end experience building big-data pipelines.
 - Prerequisites: basic Linux command-line, Python, Docker & Docker Compose, Java (for Spark if running locally), familiarity with SQL and programming.
 
-Learning objectives
+## Learning objectives
+
 By the end of the lab you will be able to:
 
 - Stand up a local reproducible big-data stack (Kafka, Schema Registry, MinIO, Postgres, Jupyter/PySpark).
@@ -19,7 +21,7 @@ By the end of the lab you will be able to:
 - Connect streaming/batch results to downstream systems (Postgres/MinIO).
 - Apply performance and operational best practices (partitioning, compaction, monitoring basics).
 
-Contents
+## Contents
 
 - Quick start (10–20 minutes)
 - Lab modules (8 modules, ~1–4 hours each)
@@ -30,7 +32,7 @@ Contents
 - Rubric & assessment tasks
 - References
 
-Quick start (local)
+## Quick start (local)
 
 1. Install Docker and Docker Compose.
 2. Clone the lab repo or copy the docker-compose file (provided in this lab).
@@ -43,7 +45,7 @@ $docker logs lab-jupyter-1 |grep token
 
 5. Start following Module 1 in the notebook or terminal.
 
-Provided components
+## Provided components
 
 - Zookeeper + Kafka (broker)
 - Confluent Schema Registry (Avro schemas)
@@ -52,19 +54,24 @@ Provided components
 - Jupyter (PySpark-enabled notebook for development)
 - Optional: tools and connectors you add (Kafka Connect, Trino, Prometheus)
 
-Datasets (suggested)
+## Datasets (suggested)
+
 - NYC Taxi trip records (sample subset) — https://www1.nyc.gov/site/tlc/about/tlc-trip-record-data.page
 - Airline on-time performance (sample) — Bureau of Transportation Statistics
 - Web server logs / simulated clickstream (small generator included in labs)
 - Synthetic user profile table for lookups
 
-Module breakdown (recommended pacing)
-Module 0 — Environment setup and intro (30–60 min)
+## Module breakdown (recommended pacing)
+
+### Module 0 — Environment setup and intro (30–60 min)
+
 - Start Docker Compose, open Jupyter, validate connectivity to Kafka and MinIO
 - Exercises: list Kafka topics, upload file to MinIO via mc or UI
 
-Module 1 — Ingestion: Kafka fundamentals (1–2 hrs)
-Goals
+### Module 1 — Ingestion: Kafka fundamentals (1–2 hrs)
+
+Goals:
+
 - Create topics, produce messages, consume messages
 - Observe partitions, replication, consumer groups
 
