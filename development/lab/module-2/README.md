@@ -1,287 +1,350 @@
 
 # Module 2 — Schemas & Serialization: Avro + Schema Registry (1–2 hrs)
 
-## Goals
-
+Goals
 - Register an Avro schema in Schema Registry and produce Avro-encoded messages
 - Understand schema compatibility settings
 
-## Tasks
-
+Tasks
 - Register "user_event" Avro schema
 - Produce Avro messages via a small Python script using confluent-kafka
 - Change schema (add optional field) and test compatibility (BACKWARD, FORWARD, FULL)
 
-## Hints
-
+Hints
 - Use the Schema Registry REST API to POST schemas
 - Use confluent_kafka.avro.AvroProducer in Python (or confluent-kafka + avro lib)
 
-## Verification
-
+Verification
 - Consumer can decode Avro messages using the same Schema Registry subject.
 
-Below is a detailed, step-by-step walkthrough for Module 2. It explains how to register a schema, produce and consume Avro-encoded messages, and experiment with compatibility settings (BACKWARD, FORWARD, FULL). I include shell and Python examples you can run inside the lab environment (schema-registry at http://schema-registry:8081, Kafka at kafka:9092).
 
-##  Overview / prerequisites
+Below is a step‑by‑step, runnable, detailed guide you can follow inside the lab docker-compose environment (schema-registry: http://schema-registry:8081, kafka: kafka:9092). It includes commands, scripts, and explanations for registering schemas, producing Avro messages, consuming & decoding them, and experimenting with compatibility modes.
 
-- Running Schema Registry reachable at http://schema-registry:8081.
-- Kafka broker reachable at kafka:9092.
-- Python environment with:
-  - confluent-kafka (and confluent-kafka[avro] for AvroProducer/AvroConsumer), or confluent-kafka + fastavro + requests for manual encode/decode.
-  - fastavro (for manual decoding).
-- jq installed in container/host (optional; used in curl examples).
-- Topic name in this lab: events (we will use subject naming for value: user_event-value by convention).
+Prerequisites
+- Docker Compose lab running (schema-registry and Kafka accessible at the service names above).
+- Python 3.8+ environment (the jupyter/pyspark-notebook container or your local env).
+- Install these Python packages (in the notebook container or venv):
+  - pip install "confluent-kafka[avro]" fastavro requests
+  - jq available on host/container for curl payload handling (optional but helpful)
 
-### 1) Avro schema — create the initial schema (user_event v1)
+High-level flow
+1. Create initial Avro schema (v1).
+2. Register schema in Schema Registry (subject: user_event-value).
+3. Produce Avro-encoded messages referencing the schema (AvroProducer or manual).
+4. Consume and decode messages (AvroConsumer or manual decode).
+5. Change schema (v2 add optional field) and test compatibility (BACKWARD, FORWARD, FULL).
+6. Verify consumers decode correctly and observe registry behavior on incompatible changes.
 
-Create a file user_event_v1.avsc with this content:
+1) Create schema files
+Create two schema files: initial v1 and an evolved v2 (adds an optional field).
 
-```
+```json name=user_event_v1.avsc
 {
   "type": "record",
   "name": "UserEvent",
   "namespace": "lab.avro",
   "fields": [
-    {"name": "id", "type": "string"},
-    {"name": "user_id", "type": "string"},
-    {"name": "event_type", "type": "string"},
-    {"name": "event_time", "type": "string"},
-    {"name": "value", "type": ["null", "double"], "default": null}
+    { "name": "id", "type": "string" },
+    { "name": "user_id", "type": "string" },
+    { "name": "event_type", "type": "string" },
+    { "name": "event_time", "type": "string" },
+    { "name": "value", "type": ["null", "double"], "default": null }
   ]
 }
 ```
 
-Notes:
-- event_time as string here for simplicity; you can encode timestamps as strings or logical types if you prefer.
-- value is nullable with default null so it's backward/forward-friendly for changes to that field.
+```json name=user_event_v2_add_optional.avsc
+{
+  "type": "record",
+  "name": "UserEvent",
+  "namespace": "lab.avro",
+  "fields": [
+    { "name": "id", "type": "string" },
+    { "name": "user_id", "type": "string" },
+    { "name": "event_type", "type": "string" },
+    { "name": "event_time", "type": "string" },
+    { "name": "value", "type": ["null", "double"], "default": null },
+    { "name": "email", "type": ["null", "string"], "default": null }
+  ]
+}
+```
 
-2) Register the schema in Schema Registry via REST (curl + jq)
-Schema Registry expects a JSON object { "schema": "<avro schema as JSON string>" }.
+2) Register schema via Schema Registry REST API (curl or Python)
+You can POST the schema JSON string to /subjects/<subject>/versions.
 
-Easy reliable way using jq to post the schema file:
+Example shell script (register_schema.sh) — will register user_event-v1:
 
-# assuming you're in same directory as user_event_v1.avsc
-schema=$(<user_event_v1.avsc)
-payload=$(jq -nc --arg s "$schema" '{"schema":$s}')
+```bash name=register_schema.sh
+#!/usr/bin/env bash
+set -e
+SCHEMA_REG_URL=${SCHEMA_REG_URL:-http://schema-registry:8081}
+SUBJECT=${SUBJECT:-user_event-value}
+SCHEMA_FILE=${SCHEMA_FILE:-user_event_v1.avsc}
+
+schema_json=$(jq -Rs '.' < "$SCHEMA_FILE") # read file and convert to JSON string
+payload=$(jq -nc --arg s "$schema_json" '{"schema":$s}')
+echo "Registering $SCHEMA_FILE to $SCHEMA_REG_URL/subjects/$SUBJECT/versions"
 curl -s -X POST -H "Content-Type: application/vnd.schemaregistry.v1+json" \
-  --data "$payload" \
-  http://schema-registry:8081/subjects/user_event-value/versions | jq
+  --data "$payload" "$SCHEMA_REG_URL/subjects/$SUBJECT/versions" | jq
+```
 
-Expected response:
-{ "id": <numeric-schema-id> }
-Take note of the returned id (you can also list versions and ids later).
+Run:
+- Put the avsc file in the same directory and run: chmod +x register_schema.sh && ./register_schema.sh
 
-Alternative: register using Python (requests):
+Python alternative:
 
-import requests, json
-schema = open("user_event_v1.avsc").read()
-resp = requests.post("http://schema-registry:8081/subjects/user_event-value/versions",
-                     headers={"Content-Type":"application/vnd.schemaregistry.v1+json"},
-                     data=json.dumps({"schema": schema}))
-print(resp.json())
+```python name=register_schema.py
+#!/usr/bin/env python3
+import requests, json, sys
+SCHEMA_REG = "http://schema-registry:8081"
+SUBJECT = "user_event-value"
+with open("user_event_v1.avsc") as f:
+    schema_str = f.read()
+resp = requests.post(f"{SCHEMA_REG}/subjects/{SUBJECT}/versions",
+                     headers={"Content-Type": "application/vnd.schemaregistry.v1+json"},
+                     data=json.dumps({"schema": schema_str}))
+print(resp.status_code, resp.text)
+```
 
-3) Inspect subjects, versions, and schema ids
-List subjects:
-curl http://schema-registry:8081/subjects | jq
+After registration you will receive a JSON response like { "id": 1 } — note the schema id.
 
-Get versions for your subject:
-curl http://schema-registry:8081/subjects/user_event-value/versions | jq
+Useful inspection curl commands:
+- List subjects: curl http://schema-registry:8081/subjects | jq
+- Get versions: curl http://schema-registry:8081/subjects/user_event-value/versions | jq
+- Get schema by id: curl http://schema-registry:8081/schemas/ids/1 | jq
 
-Get a schema by id:
-curl http://schema-registry:8081/schemas/ids/1 | jq
+3) Produce Avro-encoded messages (preferred: AvroProducer)
+Use confluent_kafka.avro.AvroProducer which handles registration and framing for you.
 
-4) Produce Avro-encoded messages: simplest using confluent_kafka.avro.AvroProducer
-Option A — using confluent-kafka[avro] (convenient):
+produce_avro.py — AvroProducer example:
 
-Python example: produce_avro.py
-
+```python name=produce_avro.py
+#!/usr/bin/env python3
 from confluent_kafka.avro import AvroProducer
-import json
-import time
+import time, json, random
+
+KAFKA_BOOTSTRAP = "kafka:9092"
+SCHEMA_REG_URL = "http://schema-registry:8081"
+TOPIC = "events"
 
 value_schema_str = open("user_event_v1.avsc").read()
 
 conf = {
-    'bootstrap.servers': 'kafka:9092',
-    'schema.registry.url': 'http://schema-registry:8081'
+    "bootstrap.servers": KAFKA_BOOTSTRAP,
+    "schema.registry.url": SCHEMA_REG_URL
 }
 
 producer = AvroProducer(conf, default_value_schema=value_schema_str)
 
-for i in range(10):
-    val = {
+for i in range(20):
+    rec = {
         "id": str(i),
-        "user_id": f"user_{i%3}",
-        "event_type": "click" if i%2==0 else "view",
+        "user_id": f"user_{i%5}",
+        "event_type": "click" if i%3 else "purchase",
         "event_time": "2025-11-18T03:00:00Z",
-        "value": None
+        "value": float(i) * 0.5 if i % 2 == 0 else None
     }
-    producer.produce(topic="events", value=val)
+    producer.produce(topic=TOPIC, value=rec)
     producer.flush()
-    time.sleep(0.1)
+    time.sleep(0.05)
 
-Notes:
-- AvroProducer will register the schema (or reuse existing) and serialize values in Confluent wire format (magic byte + schema id + payload).
-- The subject used will be user_event-value if you provided default_value_schema and your topic is events; check client docs for exact subject naming conventions.
+print("Produced 20 messages")
+```
 
-Option B — using confluent_kafka with manual schema registry client + fastavro
-If you prefer to manage registration and serialization yourself:
+Run it in the container (or environment that can reach kafka and schema-registry):
+- python produce_avro.py
 
-- Register schema (as in step 2), get returned id.
-- Use fastavro.schemaless_writer to encode the record to bytes, then prepend Confluent wire format header:
-  - 1 byte: 0 (magic)
-  - 4 bytes: schema id, big-endian integer
-  - rest: Avro-encoded payload
+Note: AvroProducer by default will use subject naming strategy that creates the subject name topic-name-value (e.g., events-value) unless you change the subject naming strategy.
 
-Example encode snippet:
+4) Alternative: manual encode + produce (fastavro + requests)
+This shows the Confluent wire format (magic byte + 4-byte schema id + avro payload). Useful to understand what's happening under the hood.
 
-import io, struct, json, requests
+manual_encode_produce.py:
+
+```python name=manual_encode_produce.py
+#!/usr/bin/env python3
+import io, struct, json, requests, random, time
 from fastavro import schemaless_writer
+from confluent_kafka import Producer
 
-schema = json.loads(open("user_event_v1.avsc").read())
-# register first, or assume you have id 1
-resp = requests.get("http://schema-registry:8081/subjects/user_event-value/versions/latest")
-schema_id = resp.json()["id"]
+SCHEMA_REG = "http://schema-registry:8081"
+SUBJECT = "user_event-value"
+TOPIC = "events"
+KAFKA = "kafka:9092"
 
-def encode_confluent_avro(payload_dict, schema, schema_id):
+# get latest schema id
+r = requests.get(f"{SCHEMA_REG}/subjects/{SUBJECT}/versions/latest")
+r.raise_for_status()
+schema_id = r.json()["id"]
+schema = json.loads(r.json()["schema"])
+
+p = Producer({"bootstrap.servers": KAFKA})
+
+def encode(payload):
     bio = io.BytesIO()
-    # magic byte
-    bio.write(b'\x00')
-    # 4-byte schema id big-endian
-    bio.write(struct.pack('>I', schema_id))
-    # avro payload
-    schemaless_writer(bio, schema, payload_dict)
+    bio.write(b'\x00')  # magic byte
+    bio.write(struct.pack(">I", schema_id))
+    schemaless_writer(bio, schema, payload)
     return bio.getvalue()
 
-Then produce the returned bytes as Kafka message value using confluent-kafka Producer.produce(topic='events', value=bytes_value).
+for i in range(5):
+    rec = {"id": str(i), "user_id": f"user_{i%3}", "event_type":"view", "event_time":"2025-11-18T03:00:00Z", "value": None}
+    val = encode(rec)
+    p.produce(TOPIC, value=val)
+    p.flush()
+    time.sleep(0.1)
 
-5) Consume Avro messages and decode (consumer side)
-Option A — AvroConsumer (confluent_kafka.avro)
+print("Manual produced 5 messages with schema id", schema_id)
+```
 
+5) Consume & decode Avro messages
+Preferred: AvroConsumer (handles Confluent framing and schema lookups)
+
+consume_avro.py:
+
+```python name=consume_avro.py
+#!/usr/bin/env python3
 from confluent_kafka.avro import AvroConsumer
 
 conf = {
-    'bootstrap.servers': 'kafka:9092',
-    'schema.registry.url':'http://schema-registry:8081',
-    'group.id': 'lab-avro-consumer',
-    'auto.offset.reset': 'earliest'
+    "bootstrap.servers": "kafka:9092",
+    "schema.registry.url": "http://schema-registry:8081",
+    "group.id": "lab-avro-consumer",
+    "auto.offset.reset": "earliest"
 }
+
 c = AvroConsumer(conf)
-c.subscribe(['events'])
-msg = c.poll(10)
-if msg:
-    print(msg.value())
-c.close()
+c.subscribe(["events"])
+try:
+    while True:
+        msg = c.poll(2)
+        if msg is None:
+            break
+        if msg.error():
+            print("Consumer error:", msg.error())
+            break
+        print("Decoded message:", msg.value())
+finally:
+    c.close()
+```
 
-AvroConsumer will fetch the writer schema via the schema id embedded in the message and decode to Python dict.
+Manual decode example (if you used manual encode earlier):
 
-Option B — manual decode using fastavro and Schema Registry REST
-Read message.value() bytes from Kafka consumer, then:
+manual_decode_consume.py
 
-import io, struct, requests
+```python name=manual_decode_consume.py
+#!/usr/bin/env python3
+import struct, io, json, requests
 from fastavro import schemaless_reader
+from confluent_kafka import Consumer
 
-def decode_confluent_avro(bytestr):
+KAFKA = "kafka:9092"
+SCHEMA_REG = "http://schema-registry:8081"
+
+c = Consumer({"bootstrap.servers": KAFKA, "group.id":"manual-decoder", "auto.offset.reset":"earliest"})
+c.subscribe(["events"])
+
+def decode(bytestr):
     bio = io.BytesIO(bytestr)
     magic = bio.read(1)
     if magic != b'\x00':
-        raise ValueError("Unknown magic byte")
-    schema_id_bytes = bio.read(4)
-    schema_id = struct.unpack('>I', schema_id_bytes)[0]
-    schema = requests.get(f'http://schema-registry:8081/schemas/ids/{schema_id}').json()['schema']
-    schema = json.loads(schema)
+        raise Exception("Unknown magic byte")
+    schema_id = struct.unpack('>I', bio.read(4))[0]
+    r = requests.get(f"{SCHEMA_REG}/schemas/ids/{schema_id}")
+    r.raise_for_status()
+    schema = json.loads(r.json()["schema"])
     record = schemaless_reader(bio, schema)
-    return record
+    return record, schema_id
 
-This approach is useful to understand the wire format and to support non-Confluent clients.
+try:
+    while True:
+        msg = c.poll(2)
+        if msg is None:
+            break
+        if msg.error():
+            print("Error:", msg.error()); break
+        rec, sid = decode(msg.value())
+        print("schema_id:", sid, "record:", rec)
+finally:
+    c.close()
+```
 
-6) Compatibility modes: concepts and how to test
-Compatibility controls whether a new schema can be registered relative to previous versions. Common modes:
+6) Compatibility modes — what they mean and how to test
+Compatibility options (common ones):
+- NONE — no checks
+- BACKWARD — new schema must be able to read data produced with previous schema(s)
+- FORWARD — old readers must be able to read data written with new schema
+- FULL — both backward and forward compatibility
 
-- NONE — no compatibility checks.
-- BACKWARD — new schema must be able to read data produced with the previous schema(s) (new schema is backward-compatible with previous). Most common for producers evolving schema while consumers use latest schema.
-- FORWARD — new schema must be such that old readers can read data produced with new schema.
-- FULL — both backward and forward (i.e., both sets of constraints).
-- Backward/Forward can be applied per subject or globally.
+Set compatibility for the subject (curl examples):
 
-Set compatibility for subject:
+```bash name=set_compatibility.sh
+#!/usr/bin/env bash
+SCHEMA_REG_URL=${SCHEMA_REG_URL:-http://schema-registry:8081}
+SUBJECT=${SUBJECT:-user_event-value}
+COMPAT=${1:-BACKWARD}  # usage: ./set_compatibility.sh BACKWARD
 
-# set BACKWARD
 curl -X PUT -H "Content-Type: application/vnd.schemaregistry.v1+json" \
-  --data '{"compatibility":"BACKWARD"}' \
-  http://schema-registry:8081/config/user_event-value | jq
+  --data "{\"compatibility\":\"${COMPAT}\"}" \
+  ${SCHEMA_REG_URL}/config/${SUBJECT} | jq
+```
 
-Get compatibility:
-curl http://schema-registry:8081/config/user_event-value | jq
+Test sequence to demonstrate compatibility:
+- Set subject compatibility to BACKWARD: ./set_compatibility.sh BACKWARD
+- Register v1 (already done)
+- Register v2 (user_event_v2_add_optional.avsc) — should succeed with BACKWARD because added field is optional and has default
+  - Use register_schema.sh with SCHEMA_FILE=user_event_v2_add_optional.avsc
+- Try an incompatible change (e.g., remove a field or add a non-nullable field without default). Registering such schema will return 4xx error with compatibility explanation.
 
-Test compatibility by trying to register evolved schemas.
+Example incompatible schema (remove value field):
 
-Example evolution #1 — Add an optional field with default (backward compatible)
-user_event_v2_add_optional.avsc:
-
+```json name=user_event_v3_remove_value.avsc
 {
   "type": "record",
   "name": "UserEvent",
   "namespace": "lab.avro",
   "fields": [
-    {"name": "id", "type": "string"},
-    {"name": "user_id", "type": "string"},
-    {"name": "event_type", "type": "string"},
-    {"name": "event_time", "type": "string"},
-    {"name": "value", "type": ["null", "double"], "default": null},
-    {"name": "email", "type": ["null", "string"], "default": null}
+    { "name": "id", "type": "string" },
+    { "name": "user_id", "type": "string" },
+    { "name": "event_type", "type": "string" },
+    { "name": "event_time", "type": "string" }
   ]
 }
+```
 
-- Registering this with BACKWARD compatibility should succeed because new schema can read old data (new field has default).
-- With FORWARD compatibility, adding a field with default is also usually fine; FULL also fine.
-- If you add a field without default or nullable type, BACKWARD may fail.
+Registering v3 with BACKWARD should fail — the registry will return an error describing why (e.g., deleting a field without default breaks compatibility).
 
-Example evolution #2 — Remove a field (not backward compatible unless default present)
-If you remove "value" field entirely in the new schema:
-- BACKWARD: new schema cannot read old messages that contain "value" because reader expects fewer fields — this is typically not allowed.
-- FORWARD: may still be allowed depending on specifics.
+7) End‑to‑end verification checklist
+- After v1 registration: produce messages (produce_avro.py) and consume via AvroConsumer (consume_avro.py) — consumer prints decoded dictionaries.
+- After adding v2 and registering with BACKWARD: producing v2 messages should succeed; AvroConsumer (which fetches writer schema id and reader schema is not needed) will decode v2 messages fine.
+- Try register v3 (incompatible): registry should return HTTP error. Confirm with curl response.
+- Inspect schema history and IDs: curl /subjects/user_event-value/versions and /schemas/ids/<id> to map ids to content.
 
-Concrete test flow:
-1. Set compatibility to BACKWARD:
-   curl -X PUT ... '{"compatibility":"BACKWARD"}' http://schema-registry:8081/config/user_event-value
-2. Try to register v2 (with optional email) — expected: 200 OK with new id.
-3. Try to register another v3 that removes a required field — expected: 4xx error and JSON explaining incompatibility.
+8) Tips, gotchas, and troubleshooting
+- Subject naming: default Confluent behavior uses topic-name-value for value schemas. If you use a different SubjectNameStrategy in client configs, subject names differ.
+- Wire format: AvroProducer and AvroConsumer use the Confluent wire format: magic byte 0x00 + 4-byte schema id + Avro payload. Manual producers/consumers must implement that.
+- When consumers decode, they request the writer schema identified by schema id — if registry not reachable, AvroConsumer fails.
+- If you use logical types (timestamp-millis), ensure consumers support them or use string timestamp to avoid confusion.
+- Watch for JSON encoding issues when posting schema via curl; use jq to escape properly or use Python requests.
+- If AvroProducer tries to register a schema and registration fails due to compatibility, the producer will fail to serialize/produce.
 
-Example: Post v2:
+9) Optional: Spark Structured Streaming reading Avro from Kafka with Schema Registry
 
-schema=$(<user_event_v2_add_optional.avsc)
-payload=$(jq -nc --arg s "$schema" '{"schema":$s}')
-curl -s -X POST -H "Content-Type: application/vnd.schemaregistry.v1+json" \
-  --data "$payload" \
-  http://schema-registry:8081/subjects/user_event-value/versions | jq
+- If you want Spark to decode Avro messages written in Confluent wire format, you can:
+  - Use the Confluent schema-registry client library for Spark or
+  - Implement a UDF to call the same manual decode logic (retrieve writer schema by id and call fastavro.schemaless_reader) — but this is slower.
+  - Alternatively, produce JSON for Spark or use Kafka Connect to convert Avro to JSON.
 
-If compatibility prevents the change you will see an error payload describing why registration failed.
+10) What we have here
 
-7) Full end-to-end verification steps
-- Register v1 (step 2). Note schema id.
-- Produce Avro messages (step 4) using AvroProducer (which will reference the schema id).
-- Consume them with AvroConsumer / manual decode (step 5) to confirm payloads decoded correctly.
-- Set compatibility to BACKWARD; attempt to register v2 (add optional field) — should succeed.
-- Produce messages using v2 (AvroProducer using v2 as default schema); consume with v1 AvroConsumer configured to use v1? In most realistic flows producers write with new schema id, consumers fetch writer schema and decode; to test reader-only compatibility you may simulate old consumer expecting v1 schema — that’s more involved; but you can at minimum verify the registry accepted the new schema.
-- Change compatibility to FORWARD and attempt to register a different incompatible change to observe rejection.
-
-8) Troubleshooting / gotchas
-- Subject naming: Confluent convention: <topic>-value for value schemas, <topic>-key for key schemas. If your producer sets subject name strategy differently, the subject names differ (e.g., topic+recordName strategy).
-- Content-Type when registering: must be application/vnd.schemaregistry.v1+json.
-- Escaping the schema JSON for curl can be error-prone — use jq to prepare payload or use a small Python script.
-- If consumer fails to decode, check the bytes: Confluent wire format begins with 0x00 magic byte and 4-byte schema id. If your producer wrote raw Avro without Confluent framing, AvroConsumer will fail.
-- Ensure confluent-kafka[avro] installed to use AvroProducer and AvroConsumer.
-- If using MinIO/S3 or different network, ensure schema-registry address reachable by your code (use full http://host:port).
-
-9) Example quick scripts and files (summary)
-Files:
-- user_event_v1.avsc (initial schema)
-- user_event_v2_add_optional.avsc (evolution example)
-- produce_avro.py (AvroProducer example)
-- consume_avro.py (AvroConsumer example)
-- manual_encode_produce.py (fastavro + schema registry id + Producer)
-- manual_decode_consume.py (fastavro decode of incoming Kafka bytes)
-
-If you want, I can generate any of these files now (for example produce_avro.py and consume_avro.py) tailored for your docker-compose lab (kafka:9092, schema-registry:8081), or produce ready-to-run curl scripts to register and test compatibility. Which files would be most helpful next?
+- Step-by-step narrative and commands to implement Module 2.
+- Several ready-to-run script files you can drop into the lab environment:
+  - user_event_v1.avsc (initial schema)
+  - user_event_v2_add_optional.avsc (evolution example)
+  - user_event_v3_remove_value.avsc (incompatible example)
+  - register_schema.sh and register_schema.py (schema registration)
+  - produce_avro.py (AvroProducer)
+  - manual_encode_produce.py (manual encoding + produce)
+  - consume_avro.py (AvroConsumer)
+  - manual_decode_consume.py (manual decode)
+  - set_compatibility.sh (set compatibility mode)
