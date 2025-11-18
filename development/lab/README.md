@@ -112,6 +112,30 @@ docker exec -it lab-kafka-1 bash
 
 - Produce 10 messages, consume 10 messages, confirm offsets increment.
 
+```
+[appuser@577a614778bf ~]$   kafka-console-producer --broker-list localhost:9092 --topic events
+>fsf
+>sdfsdf
+>sfsf
+>fsdfsf
+>sdfsdf
+>sdfsdfs
+>fsfsdf
+>fsdfsdf
+>
+>^C[appuser@577a614778bf ~]$   kafka-console-consumer --bootstrap-server localhost:9092 --topic events --from-beginning
+fsf
+sdfsdf
+sfsf
+fsdfsf
+sdfsdf
+sdfsdfs
+fsfsdf
+fsdfsdf
+
+^CProcessed a total of 9 messages
+```
+
 ### Module 2 — Schemas & Serialization: Avro + Schema Registry (1–2 hrs)
 
 #### Goals
