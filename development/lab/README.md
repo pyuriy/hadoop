@@ -84,6 +84,12 @@ By the end of the lab you will be able to:
 
 #### Commands (examples)
 
+- Login to Kafka
+
+``` bash
+docker exec -it lab-kafka-1 bash
+```
+
 - Create topic:
 
 ```bash
