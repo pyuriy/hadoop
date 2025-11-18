@@ -32,7 +32,10 @@ Quick start (local)
 2. Clone the lab repo or copy the docker-compose file (provided in this lab).
 3. Run: docker compose up -d
 4. Open Jupyter: http://localhost:8888 (token printed by container logs)
-5. Start following Module 1 in the notebook or terminal.
+```bash
+$docker logs lab-jupyter-1 |grep token
+```
+6. Start following Module 1 in the notebook or terminal.
 
 Provided components
 - Zookeeper + Kafka (broker)
