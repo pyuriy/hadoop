@@ -3,7 +3,9 @@
 This cheatsheet covers core Apache Kafka concepts enhanced by Confluent Platform features (as of late 2025). Confluent builds on Kafka with tools like Schema Registry, Kafka Connect, ksqlDB, and Control Center. Assumes basic familiarity with Kafka; focus is on practical commands and configs. For full docs, see [Confluent Documentation](https://docs.confluent.io/).
 
 ## 1. Installation & Setup
+
 ### Quick Start (Local Cluster)
+
 ```bash
 # Download & start Confluent Platform (Community Edition)
 curl -O https://packages.confluent.io/archive/7.7/confluent-7.7.0.tar.gz  # Update version as needed
@@ -19,7 +21,9 @@ bin/confluent local services status
 ```
 
 ### Docker Compose (Production-like)
+
 Use Confluent's official images:
+
 ```yaml
 # docker-compose.yml
 version: '3'

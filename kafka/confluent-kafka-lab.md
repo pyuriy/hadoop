@@ -1,10 +1,13 @@
 # Comprehensive Confluent Kafka Hands-On Lab
 
+Nice confluent kafaka [lab](https://docs.confluent.io/platform/current/get-started/platform-quickstart.html#quickstart)
+
 Welcome to this comprehensive hands-on lab for Confluent Platform 8.1 (released with Apache Kafka 4.1 as of November 2025). This lab guides you through setting up a local development environment, exploring core Kafka features, and integrating Confluent's value-added components like Schema Registry, Kafka Connect, and ksqlDB. By the end, you'll have practical experience with streaming data pipelines.
 
 **Estimated Time**: 2-3 hours  
 **Level**: Intermediate (basic command-line and JSON familiarity assumed)  
 **Goals**:
+
 - Install and run a local Confluent cluster.
 - Perform basic producer/consumer operations.
 - Manage schemas for data evolution.
@@ -15,6 +18,7 @@ Welcome to this comprehensive hands-on lab for Confluent Platform 8.1 (released 
 For full reference, see [Confluent Docs](https://docs.confluent.io/platform/current/overview.html). All commands assume a Unix-like shell (macOS/Linux); adapt for Windows.
 
 ## Prerequisites
+
 - Docker & Docker Compose (v20+)
 - 8GB+ RAM (for local cluster)
 - Java 11+ (for any custom apps, optional)
