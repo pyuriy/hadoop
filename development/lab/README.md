@@ -1,4 +1,4 @@
-plaine wwwwwwwwwwwwwwwwwwwwwweeww# Comprehensive Big Data Development Lab
+# Comprehensive Big Data Development Lab
 
 ## Overview
 
