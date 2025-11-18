@@ -39,9 +39,9 @@ By the end of the lab you will be able to:
 3. Run: docker compose up -d
 4. Open Jupyter: http://localhost:8888 (token printed by container logs)
 
-```bash
-$docker logs lab-jupyter-1 |grep token
-```
+  ```bash
+  $docker logs lab-jupyter-1 |grep token
+  ```
 
 5. Start following Module 1 in the notebook or terminal.
 
@@ -113,25 +113,30 @@ $docker logs lab-jupyter-1 |grep token
 - Register an Avro schema in Schema Registry and produce Avro-encoded messages
 - Understand schema compatibility settings
 
-*Tasks*
+#### Tasks
 
 - Register "user_event" Avro schema
 - Produce Avro messages via a small Python script using confluent-kafka
 - Change schema (add optional field) and test compatibility (BACKWARD, FORWARD, FULL)
 
-Hints
+#### Hints
+
 - Use the Schema Registry REST API to POST schemas
 - Use confluent_kafka.avro.AvroProducer in Python (or confluent-kafka + avro lib)
 
-Verification
+#### Verification
+
 - Consumer can decode Avro messages using the same Schema Registry subject.
 
-Module 3 — Streaming: Spark Structured Streaming (2–4 hrs)
-Goals
+### Module 3 — Streaming: Spark Structured Streaming (2–4 hrs)
+
+#### Goals
+
 - Build a Structured Streaming job that reads Kafka, parses Avro/JSON, enriches with lookup data, writes to Parquet (in MinIO) and Postgres (sink)
 - Use checkpointing and idempotent writes
 
-Tasks
+#### Tasks
+
 - Create a PySpark Structured Streaming notebook:
   - Read from Kafka topic "events" (bootstrap-server localhost:9092)
   - Parse the value (Avro or JSON)
@@ -141,6 +146,7 @@ Tasks
   - Use checkpointLocation on MinIO for fault tolerance
 
 Key code snippets (PySpark)
+
 - Read from Kafka:
   df = spark.readStream.format("kafka") \
       .option("kafka.bootstrap.servers","kafka:9092") \
