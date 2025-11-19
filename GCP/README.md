@@ -27,6 +27,5 @@ THere we have guides and hands-on lab materials for running and migrating Hadoop
 ## Observations & Recommendations
 
 - The folder provides both conceptual (migration, mapping) and practical (labs) artifacts, which is useful for adoption and training.
-- Consider adding a table of contents in README.md that links to each of these files for easier navigation.
 - If not already present in the files, adding a short prerequisites section (GCP project setup, IAM roles, billing, SDK/CLI setup) at the top of README.md would help users get started faster.
 - If the labs include scripts or commands, ensure those are copy/paste ready and have explicit region/zone and project placeholders clearly marked.
