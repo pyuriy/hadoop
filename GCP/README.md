@@ -8,7 +8,7 @@ THere we have guides and hands-on lab materials for running and migrating Hadoop
 
 ## Files (with links)
 
-- [README](./README.md) - High-level overview and instructions for using the GCP materials (entry point for the folder).
+- [Cheatseet](./cheat-sheet.md) - Covers key Google Cloud Platform (GCP) services for big data processing, analytics, and storage.
 
 - [General Lab](https://github.com/pyuriy/hadoop/blob/92e7b6818ba87af9010a4b63d27335283044386a/GCP/lab.md) - General lab exercises for deploying and working with Hadoop on GCP (hands-on tutorials and walkthroughs).
 
