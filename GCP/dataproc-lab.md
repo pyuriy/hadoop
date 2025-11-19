@@ -3,7 +3,7 @@
 This hands-on lab guides you through provisioning, using, and managing Apache Hadoop/Spark clusters with Google Cloud Dataproc. Dataproc is a fully managed service that automates cluster creation, scaling, and maintenance, allowing you to focus on data processing. You'll create clusters of different types, submit batch jobs (Spark and PySpark), resize dynamically, interact via SSH, and monitor performance. By the end, you'll have practical experience with Dataproc for big data workloads.
 
 **Estimated Time:** 1-2 hours  
-**Cost:** ~$2-5 (use a small cluster; monitor in Billing console. Free tier/Qwiklabs eligible)  
+**Cost:** ~$2-5 (use a small cluster; monitor in Billing console. Free tier/[Qwiklabs](https://www.skills.google/) eligible)  
 **Level:** Beginner to Intermediate (basic CLI knowledge assumed)  
 **Date Context:** As of November 18, 2025, use Dataproc image version 2.3 (default for premium tier clusters).
 
