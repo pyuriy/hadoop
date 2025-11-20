@@ -4,7 +4,7 @@ This document summarizes the contents of the GCP Big Data in the repository and 
 
 ## Overview
 
-THere we have guides and hands-on lab materials for running and migrating Hadoop/Clouder workloads on Google Cloud Platform (GCP). It includes a top-level README, migration guidance, and lab exercises including Dataproc-focused labs and a mapping document describing Clouder-to-GCP mappings.
+Here we have guides and hands-on lab materials for running and migrating Hadoop/Clouder workloads on Google Cloud Platform (GCP). It includes a top-level README, migration guidance, and lab exercises including Dataproc-focused labs and a mapping document describing Clouder-to-GCP mappings.
 
 ## Files (with links)
 
