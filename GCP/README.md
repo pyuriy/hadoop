@@ -20,6 +20,8 @@ Here we have guides and hands-on lab materials for running and migrating Hadoop/
 
 - Dataproc [Health mangement](./manage-Dataproc.md) - Here is how you perform common "Ambari tasks" in the Dataproc world.
 
+- Start [CDP cluster](./CDP-clutser/README.md) - Terrafor code to start CDP cluster in GCP
+
 ## Suggested quick reads
 
 - Start with README.md for context and prerequisites.
