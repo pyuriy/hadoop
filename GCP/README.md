@@ -18,6 +18,8 @@ THere we have guides and hands-on lab materials for running and migrating Hadoop
 
 - [Clouder GCP Services map](https://github.com/pyuriy/hadoop/blob/92e7b6818ba87af9010a4b63d27335283044386a/GCP/Clouder-GCP-map.md) - Mapping of Clouder/Hadoop components and concepts to equivalent GCP services and configurations.
 
+- Dataproc [Health mangement](./manage-Dataproc.md) - Here is how you perform common "Ambari tasks" in the Dataproc world.
+
 ## Suggested quick reads
 
 - Start with README.md for context and prerequisites.
