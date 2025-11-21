@@ -86,10 +86,8 @@ Troubleshooting tips
 - SSH to nodes and inspect /var/log/cloud-init-output.log or /var/log/syslog for errors.
 - If Cloudera Manager installer fails due to missing packages, download and reference the correct repository per Cloudera docs.
 
-Next steps I can help with
-- I can generate a variant that:
+Next steps:
   - populates /etc/hosts automatically (passing IPs/hostnames from Terraform to the startup script)
   - creates an external Postgres instance and configures the CM installer to use it
   - installs CM agent package repo via Terraform metadata and ensures agents preinstalled on workers
   - use startup-script templating to inject actual values (cloudera_installer_url, use_embedded_db) into the script before apply
-- If you want, tell me whether you prefer embedded DB (PoC) or external DB (production), and whether you want me to template the startup script with proper Terraform templatefile usage to inject variables directly.
