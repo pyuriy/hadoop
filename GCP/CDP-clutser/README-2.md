@@ -7,7 +7,7 @@ Before starting, ensure you have:
 - A Cloudera Data Platform (CDP) account (sign up for a free trial at [cloudera.com](https://www.cloudera.com)).
 - Terraform installed (version 1.0 or higher; download from [terraform.io](https://www.terraform.io/downloads)).
 - GCP authentication configured:
-  - Install the Google Cloud SDK and run `gcloud auth application-default login`.
+  - [Install](./gcloud_ubuntu.md) the Google Cloud SDK and run `gcloud auth application-default login`.
   - Or, create a [service account key JSON file](./service-account-key-JSON-file.md) and set `export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json`.
 - Required IAM roles for your GCP service account or user: Compute Network Admin, Compute Security Admin, Role Administrator, Security Admin, Service Account Admin, Service Account Key Admin, Storage Admin, Viewer.
 - CDP CLI installed and configured with credentials (run `cdp config` to set up `~/.cdp/credentials` with your CDP username and private key).
