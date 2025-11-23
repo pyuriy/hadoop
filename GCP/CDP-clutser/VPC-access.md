@@ -22,6 +22,7 @@ If you don't have an existing VPC, create one. This sets up the isolated network
    - **Subnet creation mode:** Automatic (creates subnets in all regions) or Custom (for manual control).
    - If Custom:
      - Add a subnet: e.g., Name: `my-subnet`, Region: `us-central1`, IP address range: `10.0.0.0/24` (CIDR block; avoid overlaps).
+     (Toronto, Canada. The GCP region closest to Toronto is **northamerica-northeast1**, which is in Montréal, Quebec, Canada.)
      - Flow logs: Off (unless needed for auditing).
      - Private Google access: On (allows private access to Google APIs).
 4. **Dynamic routing mode:** Regional (default).
