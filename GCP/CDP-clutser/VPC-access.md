@@ -7,6 +7,7 @@
   - Note: If your IP is dynamic (changes), consider using a static IP or Cloud NAT for outbound, but for inbound access to GCP, use your current public IP in CIDR format (e.g., `203.0.113.1/32` for a single IP).
 - IAM permissions: Compute Network Admin (for VPC creation) and Compute Security Admin (for firewall rules).
 - Access to GCP Console (console.cloud.google.com) or gcloud CLI installed and authenticated (`gcloud auth login`).
+- You need to enable the [Compute Engine API](./ComputeEngineAPI.md) 
 
 **Warning:** Opening "all access" (e.g., all ports/protocols) from your IP is a security risk. Limit to necessary ports (e.g., SSH:22, HTTPS:443) if possible. This guide assumes you want full TCP/UDP access for simplicity; adjust as needed.
 
