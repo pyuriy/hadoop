@@ -1,0 +1,58 @@
+---
+- name: Prepare nodes and install Cloudera Manager
+  hosts: all_nodes
+  become: yes
+  tasks:
+    - name: Disable SELinux (Required for Cloudera)
+      selinux:
+        state: disabled
+
+    - name: Disable Transparent Huge Pages (Performance)
+      shell: |
+        echo never > /sys/kernel/mm/transparent_hugepage/enabled
+        echo never > /sys/kernel/mm/transparent_hugepage/defrag
+
+    - name: Install Java 8 (OpenJDK)
+      yum:
+        name: java-1.8.0-openjdk-devel
+        state: present
+
+    - name: Add Cloudera Manager Repository
+      get_url:
+        url: https://archive.cloudera.com/cm7/7.4.4/redhat7/yum/cloudera-manager.repo
+        dest: /etc/yum.repos.repos.d/cloudera-manager.repo
+
+- name: Install CM Server on Master Node
+  hosts: cm_server
+  become: yes
+  tasks:
+    - name: Install Cloudera Manager Server & Daemons
+      yum:
+        name: 
+          - cloudera-manager-server
+          - cloudera-manager-daemons
+        state: present
+
+    - name: Install PostgreSQL for CM Metadata
+      yum:
+        name: postgresql-server
+        state: present
+
+    - name: Initialize PostgreSQL
+      command: postgresql-setup initdb
+      args:
+        creates: /var/lib/pgsql/data/PG_VERSION
+
+    - name: Start PostgreSQL and CM Server
+      systemd:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      loop:
+        - postgresql
+        - cloudera-manager-server
+
+    - name: Wait for CM Web UI to be ready
+      wait_for:
+        port: 7180
+        delay: 10
