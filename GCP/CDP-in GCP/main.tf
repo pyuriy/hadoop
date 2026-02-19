@@ -2,6 +2,7 @@
 # 1. ПРОВАЙДЕР ТА ЗМІННІ
 # =================================================================
 provider "google" {
+  credentials = file(var.gcp_auth_file)
   project = var.project_id
   region  = var.region
   zone    = var.zone
@@ -19,6 +20,7 @@ resource "google_compute_subnetwork" "hadoop_subnet" {
   name          = "hadoop-subnet"
   ip_cidr_range = "10.0.1.0/24"
   network       = google_compute_network.hadoop_vpc.id
+  region        = var.region
 }
 
 resource "google_compute_firewall" "allow_internal" {
@@ -34,11 +36,15 @@ resource "google_compute_firewall" "allow_internal" {
 resource "google_compute_firewall" "allow_external" {
   name    = "allow-external-ui"
   network = google_compute_network.hadoop_vpc.name
+
   allow {
     protocol = "tcp"
+    # 22: SSH, 7180: Cloudera Manager, 8888: Hue, 9870: HDFS, 8088: YARN
     ports    = ["22", "7180", "8888", "9870", "8088"]
   }
-  source_ranges = ["0.0.0.0/0"] # Рекомендовано обмежити вашою IP-адресою
+
+  # ТУТ ВІДБУВАЄТЬСЯ МАГІЯ БЕЗПЕКИ:
+  source_ranges = ["${var.my_external_ip}/32"]
 }
 
 # =================================================================
@@ -47,8 +53,8 @@ resource "google_compute_firewall" "allow_external" {
 resource "google_compute_disk" "data_disks" {
   count = length(var.node_names)
   name  = "data-disk-${count.index}"
-  type  = "pd-ssd"
-  size  = 200
+  type  = "pd-standard"
+  size  = 50
   zone  = var.zone
 }
 
@@ -64,8 +70,8 @@ resource "google_compute_instance" "hadoop_nodes" {
 
   boot_disk {
     initialize_params {
-      image = "centos-cloud/centos-7"
-      size  = 100
+      image = "rocky-linux-cloud/rocky-linux-8"
+      size  = 50
     }
   }
 
