@@ -1,0 +1,107 @@
+---
+- name: Configure cluster networking and SSH access
+  hosts: all_nodes
+  become: yes
+  tasks:
+    - name: Gather facts from all nodes
+      setup:
+        gather_subset:
+          - network
+
+    - name: Update /etc/hosts with cluster nodes
+      blockinfile:
+        path: /etc/hosts
+        block: |
+          # Cloudera Cluster Nodes
+          {{ hostvars['master-01']['ansible_default_ipv4']['address'] }}  master-01
+          {{ hostvars['worker-01']['ansible_default_ipv4']['address'] }}  worker-01
+          {{ hostvars['worker-02']['ansible_default_ipv4']['address'] }}  worker-02
+        marker: "# {mark} ANSIBLE MANAGED CLUSTER HOSTS"
+        backup: yes
+
+    - name: Set hostname on each node
+      command: hostnamectl set-hostname {{ inventory_hostname }}
+      when: ansible_hostname != inventory_hostname
+
+- name: Configure root SSH access from master to all nodes
+  hosts: cm_server
+  become: yes
+  tasks:
+    - name: Check if root SSH key exists
+      stat:
+        path: /root/.ssh/id_rsa
+      register: root_ssh_key
+
+    - name: Generate SSH key pair for root user
+      command: ssh-keygen -t rsa -b 4096 -f /root/.ssh/id_rsa -N ''
+      args:
+        creates: /root/.ssh/id_rsa
+      when: not root_ssh_key.stat.exists
+
+    - name: Read root public key
+      slurp:
+        path: /root/.ssh/id_rsa.pub
+      register: root_pubkey
+
+    - name: Set root public key as fact
+      set_fact:
+        master_root_pubkey: "{{ root_pubkey.content | b64decode }}"
+
+- name: Distribute master root SSH key to all nodes
+  hosts: all_nodes
+  become: yes
+  tasks:
+    - name: Ensure /root/.ssh directory exists
+      file:
+        path: /root/.ssh
+        state: directory
+        mode: '0700'
+        owner: root
+        group: root
+
+    - name: Add master root public key to authorized_keys on all nodes
+      authorized_key:
+        user: root
+        key: "{{ hostvars[groups['cm_server'][0]]['master_root_pubkey'] }}"
+        state: present
+
+    - name: Set proper permissions on authorized_keys
+      file:
+        path: /root/.ssh/authorized_keys
+        mode: '0600'
+        owner: root
+        group: root
+
+- name: Configure SSH client settings on master
+  hosts: cm_server
+  become: yes
+  tasks:
+    - name: Configure SSH to disable strict host key checking for cluster
+      blockinfile:
+        path: /root/.ssh/config
+        block: |
+          Host master-01 worker-01 worker-02
+              StrictHostKeyChecking no
+              UserKnownHostsFile /dev/null
+        marker: "# {mark} ANSIBLE MANAGED SSH CONFIG"
+        create: yes
+        mode: '0600'
+        owner: root
+        group: root
+
+    - name: Test SSH connectivity from master to all nodes
+      shell: |
+        ssh -o ConnectTimeout=5 {{ item }} "hostname"
+      loop:
+        - master-01
+        - worker-01
+        - worker-02
+      register: ssh_test
+      changed_when: false
+      failed_when: false
+
+    - name: Display SSH test results
+      debug:
+        msg: "SSH to {{ item.item }}: {{ item.stdout }}"
+      loop: "{{ ssh_test.results }}"
+      when: item.stdout is defined
