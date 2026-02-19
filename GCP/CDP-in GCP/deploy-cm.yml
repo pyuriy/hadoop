@@ -17,10 +17,22 @@
         name: java-1.8.0-openjdk-devel
         state: present
 
-    - name: Add Cloudera Manager Repository
-      get_url:
-        url: https://archive.cloudera.com/cm7/7.4.4/redhat7/yum/cloudera-manager.repo
-        dest: /etc/yum.repos.repos.d/cloudera-manager.repo
+    - name: Add Cloudera Manager Repository (Rocky/RHEL 8)
+      copy:
+        src: cloudera-manager.repo
+        dest: /etc/yum.repos.d/cloudera-manager.repo
+        mode: '0644'
+
+- name: Install Cloudera Manager Agent on all nodes
+  hosts: all_nodes
+  become: yes
+  tasks:
+    - name: Install Cloudera Manager Agent & Daemons
+      yum:
+        name: 
+          - cloudera-manager-agent
+          - cloudera-manager-daemons
+        state: present
 
 - name: Install CM Server on Master Node
   hosts: cm_server
@@ -43,14 +55,114 @@
       args:
         creates: /var/lib/pgsql/data/PG_VERSION
 
-    - name: Start PostgreSQL and CM Server
+    - name: Backup original pg_hba.conf
+      copy:
+        src: /var/lib/pgsql/data/pg_hba.conf
+        dest: /var/lib/pgsql/data/pg_hba.conf.orig
+        remote_src: yes
+        force: no
+
+    - name: Replace pg_hba.conf with custom configuration
+      copy:
+        dest: /var/lib/pgsql/data/pg_hba.conf
+        content: |
+          # PostgreSQL Client Authentication Configuration File
+          # TYPE  DATABASE        USER            ADDRESS                 METHOD
+          
+          # "local" is for Unix domain socket connections only
+          local   all             postgres                                peer
+          local   all             all                                     md5
+          
+          # IPv4 local connections:
+          host    all             all             127.0.0.1/32            md5
+          
+          # IPv6 local connections:
+          host    all             all             ::1/128                 md5
+          
+          # Allow replication connections from localhost, by a user with the
+          # replication privilege.
+          local   replication     all                                     peer
+          host    replication     all             127.0.0.1/32            md5
+          host    replication     all             ::1/128                 md5
+          
+          # Remote connections
+          host    all             all             0.0.0.0/0               md5
+          host    all             all             ::0/0                   md5
+        owner: postgres
+        group: postgres
+        mode: '0600'
+
+    - name: Configure PostgreSQL to listen on all addresses
+      lineinfile:
+        path: /var/lib/pgsql/data/postgresql.conf
+        regexp: '^#?listen_addresses'
+        line: "listen_addresses = '*'"
+
+    - name: Start and enable PostgreSQL
       systemd:
-        name: "{{ item }}"
+        name: postgresql
+        state: restarted
+        enabled: yes
+
+    - name: Wait for PostgreSQL to be ready
+      wait_for:
+        port: 5432
+        delay: 2
+        timeout: 30
+
+    - name: Install Python PostgreSQL library for Ansible modules
+      yum:
+        name: python3-psycopg2
+        state: present
+
+    - name: Create Cloudera Manager database
+      become_user: postgres
+      shell: |
+        psql -c "SELECT 1 FROM pg_database WHERE datname = 'scm'" | grep -q 1 || psql -c "CREATE DATABASE scm;"
+      register: create_db
+      changed_when: "'CREATE DATABASE' in create_db.stdout"
+
+    - name: Create Cloudera Manager PostgreSQL user
+      become_user: postgres
+      shell: |
+        psql -c "SELECT 1 FROM pg_roles WHERE rolname = 'scm'" | grep -q 1 || psql -c "CREATE USER scm WITH PASSWORD 'scm_password';"
+      register: create_user
+      changed_when: "'CREATE ROLE' in create_user.stdout"
+
+    - name: Grant privileges to scm user
+      become_user: postgres
+      shell: psql -c "GRANT ALL PRIVILEGES ON DATABASE scm TO scm;"
+      changed_when: true
+
+    - name: Test database connection
+      shell: PGPASSWORD='scm_password' psql -h localhost -U scm -d scm -c "SELECT 1;"
+      register: db_test
+      failed_when: false
+
+    - name: Display database connection test
+      debug:
+        var: db_test
+
+    - name: Stop Cloudera Manager Server if running
+      systemd:
+        name: cloudera-scm-server
+        state: stopped
+      ignore_errors: yes
+
+    - name: Prepare Cloudera Manager database schema
+      command: /opt/cloudera/cm/schema/scm_prepare_database.sh postgresql scm scm scm_password -h localhost
+      register: prepare_db_result
+      failed_when: false
+
+    - name: Display database preparation output
+      debug:
+        var: prepare_db_result
+
+    - name: Start Cloudera Manager Server
+      systemd:
+        name: cloudera-scm-server
         state: started
         enabled: yes
-      loop:
-        - postgresql
-        - cloudera-manager-server
 
     - name: Wait for CM Web UI to be ready
       wait_for:
