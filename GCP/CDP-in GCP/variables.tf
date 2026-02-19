@@ -3,17 +3,22 @@ variable "project_id" {
   type        = string
 }
 
+variable "gcp_auth_file" {
+  type        = string
+  description = "Шлях до файлу JSON з ключами сервісного акаунта"
+}
+
 variable "region" {
-  default = "us-central1"
+  default = "northamerica-northeast2"
 }
 
 variable "zone" {
-  default = "us-central1-a"
+  default = "northamerica-northeast2-c"
 }
 
 variable "ssh_user" {
   description = "The user that will be created on the VMs"
-  default     = "centos"
+  default     = "yvp"
 }
 
 variable "ssh_pub_key_path" {
@@ -28,5 +33,10 @@ variable "node_names" {
 
 variable "machine_type" {
   description = "Size of the VMs"
-  default     = "n2-standard-8"
+  default     = "e2-standard-4"
+}
+
+variable "my_external_ip" {
+  type        = string
+  description = "My local external IP address for security"
 }
